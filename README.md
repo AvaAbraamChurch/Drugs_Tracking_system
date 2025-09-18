@@ -10,7 +10,7 @@ The app is designed for **pharmacies, hospitals, clinics, and individuals** who 
 - ⏰ **Expiry Reminders** – Smart notifications before medicines expire.
 - 📊 **Stock Monitoring** – Track available quantities and get alerts when stock is low.
 - 🔍 **Search & Filter** – Find medicines by name, category, or expiry status (Expired, Near Expiry, Valid).
-- ☁️ **Cross-Platform Support** – Runs on **Android, iOS, Web, Windows, Linux, and macOS**.
+- ☁️ **Cross-Platform Support** – Runs on **Android and iOS**.
 - 🔐 **Data Security** – Local storage with optional cloud integration.
 
 ---
@@ -19,7 +19,7 @@ The app is designed for **pharmacies, hospitals, clinics, and individuals** who 
 - **Framework:** Flutter
 - **Languages:** Dart (UI/Logic), Kotlin/Java (Android), Swift (iOS)
 - **State Management:** Bloc
-- **Database:** Firebase, local SQLite
+- **Database:** Supabase, local SQLite
 - **Notifications:** Flutter Local Notifications
 - **Version Control:** Git & GitHub
 
