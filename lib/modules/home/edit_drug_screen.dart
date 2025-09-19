@@ -268,7 +268,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
     }
   }
 
-  Future<void> _deleteDrug() async {
+  Future<void> _deleteDrug(cubit) async {
     final bool? confirmDelete = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -300,7 +300,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
       });
 
       try {
-        await _drugsRepository.deleteDrug(widget.drugToEdit.id.toString());
+        await cubit.deleteDrug(widget.drugToEdit.id);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -392,7 +392,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                 ),
                 const Spacer(),
                 IconButton(
-                  onPressed: _isLoading ? null : _deleteDrug,
+                  onPressed: () => _deleteDrug(widget.cubit),
                   icon: const Icon(Icons.delete, color: Colors.red),
                   tooltip: 'Delete Drug',
                 ),

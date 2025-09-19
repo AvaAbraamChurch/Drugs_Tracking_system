@@ -1,5 +1,6 @@
 import 'package:conditional_builder_null_safety/conditional_builder_null_safety.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pharmanow/core/Blocs/home%20cubit/home_states.dart';
 import 'package:pharmanow/core/styles/colors.dart';
@@ -8,6 +9,7 @@ import 'package:pharmanow/shared/widgets.dart';
 
 import '../../core/Blocs/home cubit/home_cubit.dart';
 import 'edit_drug_screen.dart';
+import 'endrawer.dart';
 import 'insert_drug_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -20,9 +22,18 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showDrugDetails(BuildContext context, drug) {
+    // Add haptic feedback for better user experience
+    HapticFeedback.lightImpact();
+
     final cubit = HomeCubit.get(context); // Get cubit reference early
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      // Optimize modal performance
+      useSafeArea: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -34,17 +45,20 @@ class HomeScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade100,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: const Icon(
-                    Icons.medication,
-                    color: Colors.blue,
-                    size: 30,
+                Hero(
+                  tag: 'drug_icon_${drug.id}',
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade100,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: const Icon(
+                      Icons.medication,
+                      color: Colors.blue,
+                      size: 30,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -79,7 +93,8 @@ class HomeScreen extends StatelessWidget {
                     context: context,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
-                    builder: (context) => EditDrugScreen(cubit: cubit,drugToEdit: drug),
+                    useSafeArea: true,
+                    builder: (context) => EditDrugScreen(cubit: cubit, drugToEdit: drug),
                   );
 
                   // Refresh the drug list if a drug was updated successfully
@@ -104,7 +119,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: 10.0,),
+            const SizedBox(height: 10.0),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -162,19 +177,33 @@ class HomeScreen extends StatelessWidget {
         final cubit = HomeCubit.get(context);
 
         return Scaffold(
+          // Optimize keyboard handling
+          resizeToAvoidBottomInset: true,
           appBar: AppBar(
             title: const Text('PHARMA NOW'),
             centerTitle: true,
             actions: [
+              Builder(
+                builder: (context) => IconButton(
+                  icon: const Icon(Icons.menu),
+                  tooltip: 'Menu',
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Scaffold.of(context).openEndDrawer();
+                  },
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.search),
                 onPressed: () {
+                  HapticFeedback.lightImpact();
                   navigateTo(context, SearchScreen());
                 },
               ),
             ],
             elevation: 0,
           ),
+          endDrawer: const EndDrawer(),
           floatingActionButton: FloatingActionButton(
               tooltip: 'Add Drug',
               backgroundColor: primaryColor,
@@ -182,10 +211,14 @@ class HomeScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(15),
               ),
               onPressed: () async {
+                HapticFeedback.mediumImpact();
                 final result = await showModalBottomSheet<bool>(
                   context: context,
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
+                  useSafeArea: true,
+                  isDismissible: true,
+                  enableDrag: true,
                   builder: (context) => InsertDrugScreen(cubit: cubit),
                 );
 
@@ -200,6 +233,7 @@ class HomeScreen extends StatelessWidget {
               condition: cubit.drugs.isNotEmpty || state is! GetDrugsLoadingState,
               builder: (BuildContext context) => RefreshIndicator(
                 onRefresh: () async {
+                  HapticFeedback.lightImpact();
                   cubit.getDrugs();
                   // Wait for the operation to complete
                   await Future.delayed(const Duration(milliseconds: 500));
@@ -210,99 +244,114 @@ class HomeScreen extends StatelessWidget {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   itemCount: cubit.drugs.length,
+                  // Add performance optimizations
+                  cacheExtent: 500,
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: false,
                   itemBuilder: (BuildContext context, int index) {
                     final drug = cubit.drugs[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      elevation: 2,
-                      child: ListTile(
-                        leading: Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: _getStockColor(drug.stock).withAlpha(30),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            Icons.medication,
-                            color: _getStockColor(drug.stock),
-                            size: 24,
-                          ),
-                        ),
-                        title: Text(
-                          drug.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.inventory,
-                                  size: 16,
-                                  color: Colors.grey.shade600,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Stock: ${drug.stock}',
-                                  style: TextStyle(
-                                    color: _getStockColor(drug.stock),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                    return RepaintBoundary(
+                      child: Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        child: ListTile(
+                          leading: Hero(
+                            tag: 'drug_icon_${drug.id}',
+                            child: Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: _getStockColor(drug.stock).withAlpha(30),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.medication,
+                                color: _getStockColor(drug.stock),
+                                size: 24,
+                              ),
                             ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today,
-                                  size: 16,
-                                  color: Colors.grey.shade600,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Expires: ${drug.expiryDate}',
-                                  style: TextStyle(
+                          ),
+                          title: Text(
+                            drug.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.inventory,
+                                    size: 16,
                                     color: Colors.grey.shade600,
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Stock: ${drug.stock}',
+                                    style: TextStyle(
+                                      color: _getStockColor(drug.stock),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today,
+                                    size: 16,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      'Expires: ${drug.expiryDate}',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                            color: Colors.grey.shade400,
+                          ),
+                          onTap: () {
+                            _showDrugDetails(context, drug);
+                          },
                         ),
-                        trailing: Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: Colors.grey.shade400,
-                        ),
-                        onTap: () {
-                          _showDrugDetails(context, drug);
-                        },
                       ),
                     );
                   },
                 ),
               ),
-            fallback: (BuildContext context) => Center(
+            fallback: (BuildContext context) => const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const CircularProgressIndicator(
+                  CircularProgressIndicator(
                     color: Colors.blue,
                     strokeWidth: 3,
                   ),
-                  const SizedBox(height: 20),
+                  SizedBox(height: 20),
                   Text(
                     'Loading drugs...',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.grey.shade600,
+                      color: Colors.grey,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
