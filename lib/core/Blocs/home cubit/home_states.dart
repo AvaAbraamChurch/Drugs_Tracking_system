@@ -1,3 +1,5 @@
+import '../../models/Drugs/drug_model.dart';
+
 abstract class HomeStates {}
 
 class HomeInitialState extends HomeStates {}
@@ -6,7 +8,11 @@ class HomeChangeBottomNavState extends HomeStates {}
 
 class GetDrugsLoadingState extends HomeStates {}
 
-class GetDrugsSuccessState extends HomeStates {}
+class GetDrugsSuccessState extends HomeStates {
+  final List<DrugModel> drugs;
+
+  GetDrugsSuccessState(this.drugs);
+}
 
 class GetDrugsErrorState extends HomeStates {
   final String error;
@@ -43,4 +49,3 @@ class deleteDrugsErrorState extends HomeStates {
 
   deleteDrugsErrorState(this.error);
 }
-

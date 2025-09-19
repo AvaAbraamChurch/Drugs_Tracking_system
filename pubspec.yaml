@@ -40,16 +40,14 @@ dependencies:
   intl: ^0.20.2
   bloc: ^9.0.0
   flutter_bloc: ^9.1.1
-  toastification: ^3.0.3
   image_picker: ^1.2.0
-  blurrycontainer: ^2.1.0
   audioplayers: ^6.5.1
   onboarding: ^4.0.2
   animated_splash_screen: ^1.3.0
   flutter_dotenv: ^6.0.0
   supabase_flutter: ^2.10.1
   conditional_builder_null_safety: ^0.0.6
-
+  flutter_local_notifications: ^19.4.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

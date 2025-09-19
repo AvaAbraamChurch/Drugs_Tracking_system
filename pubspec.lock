@@ -41,6 +41,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.4"
+  args:
+    dependency: transitive
+    description:
+      name: args
+      sha256: d0481093c50b1da8910eb0bb301626d4d8eb7284aa739614d2b394ee09e3ea04
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.7.0"
   async:
     dependency: transitive
     description:
@@ -113,14 +121,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "9.0.0"
-  blurrycontainer:
-    dependency: "direct main"
-    description:
-      name: blurrycontainer
-      sha256: ceb51f5bf0c746509a64fec43988a482adbcdf8bc5e0a11f3cc49b9ed35ff230
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.0"
   boolean_selector:
     dependency: transitive
     description:
@@ -185,14 +185,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.8"
-  equatable:
+  dbus:
     dependency: transitive
     description:
-      name: equatable
-      sha256: "567c64b3cb4cf82397aac55f4f0cbd3ca20d77c6c03bedbc4ceaddc08904aef7"
+      name: dbus
+      sha256: "79e0c23480ff85dc68de79e2cd6334add97e48f7f4865d17686dd6ea81a47e8c"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.7"
+    version: "0.7.11"
   fake_async:
     dependency: transitive
     description:
@@ -286,6 +286,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.0"
+  flutter_local_notifications:
+    dependency: "direct main"
+    description:
+      name: flutter_local_notifications
+      sha256: "7ed76be64e8a7d01dfdf250b8434618e2a028c9dfa2a3c41dc9b531d4b3fc8a5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "19.4.2"
+  flutter_local_notifications_linux:
+    dependency: transitive
+    description:
+      name: flutter_local_notifications_linux
+      sha256: e3c277b2daab8e36ac5a6820536668d07e83851aeeb79c446e525a70710770a5
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.0"
+  flutter_local_notifications_platform_interface:
+    dependency: transitive
+    description:
+      name: flutter_local_notifications_platform_interface
+      sha256: "277d25d960c15674ce78ca97f57d0bae2ee401c844b6ac80fcd972a9c99d09fe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.1.0"
+  flutter_local_notifications_windows:
+    dependency: transitive
+    description:
+      name: flutter_local_notifications_windows
+      sha256: "8d658f0d367c48bd420e7cf2d26655e2d1130147bca1eea917e576ca76668aaf"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   flutter_localizations:
     dependency: "direct main"
     description: flutter
@@ -349,14 +381,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
-  iconsax_flutter:
-    dependency: transitive
-    description:
-      name: iconsax_flutter
-      sha256: d14b4cec8586025ac15276bdd40f6eea308cb85748135965bb6255f14beb2564
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.1"
   image_picker:
     dependency: "direct main"
     description:
@@ -589,14 +613,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.3.0"
-  pausable_timer:
+  petitparser:
     dependency: transitive
     description:
-      name: pausable_timer
-      sha256: "6ef1a95441ec3439de6fb63f39a011b67e693198e7dae14e20675c3c00e86074"
+      name: petitparser
+      sha256: "1a97266a94f7350d30ae522c0af07890c70b8e62c71e8e3920d1db4d23c057d1"
       url: "https://pub.dev"
     source: hosted
-    version: "3.1.0+3"
+    version: "7.0.1"
   platform:
     dependency: transitive
     description:
@@ -802,14 +826,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.4"
-  toastification:
-    dependency: "direct main"
+  timezone:
+    dependency: transitive
     description:
-      name: toastification
-      sha256: "69db2bff425b484007409650d8bcd5ed1ce2e9666293ece74dcd917dacf23112"
+      name: timezone
+      sha256: dd14a3b83cfd7cb19e7888f1cbc20f258b8d71b54c06f79ac585f14093a287d1
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.3"
+    version: "0.10.1"
   typed_data:
     dependency: transitive
     description:
@@ -938,6 +962,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
+  xml:
+    dependency: transitive
+    description:
+      name: xml
+      sha256: "971043b3a0d3da28727e40ed3e0b5d18b742fa5a68665cca88e74b7876d5e025"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.6.1"
   yet_another_json_isolate:
     dependency: transitive
     description:

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:animated_splash_screen/animated_splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -8,13 +6,13 @@ import 'package:pharmanow/core/Blocs/home%20cubit/home_cubit.dart';
 import 'package:pharmanow/core/styles/theme.dart';
 import 'package:pharmanow/modules/home/home_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// import 'firebase_options.dart';
-import 'modules/onboarding/onborading_screen.dart';
 import 'shared/bloc_observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:path_provider/path_provider.dart';
+import 'core/utils/notifications_service.dart';
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// Use the navigator key from NotificationsService
+final GlobalKey<NavigatorState> navigatorKey = NotificationsService.navigatorKey;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +24,8 @@ void main() async {
   final supabaseKey = dotenv.env['SUPABASE_KEY']!;
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
+  await NotificationsService.initialize();
+
 
 
   // await Hive.initFlutter();
@@ -63,7 +63,7 @@ class MyApp extends StatelessWidget {
     return BlocProvider(
       create: (BuildContext context) => HomeCubit()..getDrugs(),
       child: MaterialApp(
-        navigatorKey: navigatorKey,
+        navigatorKey: navigatorKey, // This now uses the NotificationsService navigator key
         localizationsDelegates: [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,

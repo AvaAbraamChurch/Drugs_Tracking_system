@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:pharmanow/core/models/Drugs/drug_model.dart';
-
 import '../../repositories/drugs_repositories.dart';
+import '../../utils/notifications_service.dart';
 import 'home_states.dart';
 
 class HomeCubit extends Cubit<HomeStates> {
@@ -24,7 +24,9 @@ class HomeCubit extends Cubit<HomeStates> {
     try {
       final drugsList = await DrugsRepository().getAllDrugs();
       drugs = drugsList;
-      emit(GetDrugsSuccessState());
+      await NotificationsService.scheduleDrugExpiryNotifications(drugs);
+      await NotificationsService.scheduleDrugStockNotifications(drugs);
+      emit(GetDrugsSuccessState(drugs)); // Pass drugs to the state
     } catch (error) {
       emit(GetDrugsErrorState(error.toString()));
       print(error.toString());
@@ -46,7 +48,16 @@ class HomeCubit extends Cubit<HomeStates> {
     emit(updateDrugsLoadingState());
     try {
       await DrugsRepository().updateDrug(drug);
+      // Update the local drugs list
+      final index = drugs.indexWhere((d) => d.id == drug.id);
+      if (index != -1) {
+        drugs[index] = drug;
+      }
+      // Check and notify about stock levels after update
+      await NotificationsService.checkAndNotifyStockLevels([drug]);
       emit(updateDrugsSuccessState());
+      // Refresh the drugs list to get updated data
+      getDrugs();
     } catch (error) {
       emit(updateDrugsErrorState(error.toString()));
       print(error.toString());
