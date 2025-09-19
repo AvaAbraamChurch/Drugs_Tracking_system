@@ -79,7 +79,7 @@ class HomeScreen extends StatelessWidget {
                     context: context,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
-                    builder: (context) => EditDrugScreen(drugToEdit: drug),
+                    builder: (context) => EditDrugScreen(cubit: cubit,drugToEdit: drug),
                   );
 
                   // Refresh the drug list if a drug was updated successfully

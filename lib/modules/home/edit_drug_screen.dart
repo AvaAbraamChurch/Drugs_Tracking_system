@@ -6,9 +6,10 @@ import '../../core/models/Drugs/drug_model.dart';
 import '../../core/repositories/drugs_repositories.dart';
 
 class EditDrugScreen extends StatefulWidget {
+  final cubit;
   final DrugModel drugToEdit;
 
-  const EditDrugScreen({super.key, required this.drugToEdit});
+  const EditDrugScreen({super.key, required this.cubit, required this.drugToEdit});
 
   @override
   State<EditDrugScreen> createState() => _EditDrugScreenState();
@@ -90,7 +91,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
 
     if (picked != null) {
       setState(() {
-        _expiryDateController.text = "${picked.day}/${picked.month}/${picked.year}";
+        _expiryDateController.text = picked.toIso8601String().split('T')[0];
       });
     }
   }
@@ -195,7 +196,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
     });
   }
 
-  Future<void> _updateDrug() async {
+  Future<void> _updateDrug(cubit) async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -211,7 +212,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
         imageUrl: _selectedImage?.path ?? '',
       );
 
-      await _drugsRepository.updateDrug(updatedDrug);
+      await cubit.updateDrug(updatedDrug);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -566,7 +567,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _updateDrug,
+                    onPressed: _isLoading ? null : () => _updateDrug(widget.cubit),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       padding: const EdgeInsets.symmetric(vertical: 16),
