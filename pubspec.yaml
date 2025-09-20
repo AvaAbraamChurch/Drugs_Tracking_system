@@ -41,13 +41,13 @@ dependencies:
   bloc: ^9.0.0
   flutter_bloc: ^9.1.1
   image_picker: ^1.2.0
-  audioplayers: ^6.5.1
   onboarding: ^4.0.2
   animated_splash_screen: ^1.3.0
   flutter_dotenv: ^6.0.0
   supabase_flutter: ^2.10.1
   conditional_builder_null_safety: ^0.0.6
   flutter_local_notifications: ^19.4.2
+  path_provider: ^2.1.5
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -88,10 +88,10 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
-  fonts:
-    - family: Alexandria
-      fonts:
-        - asset: assets/fonts/Alexandria/Alexandria-SemiBold.ttf
+#  fonts:
+#    - family: Alexandria
+#      fonts:
+#        - asset: assets/fonts/Alexandria/Alexandria-SemiBold.ttf
   #   - family: Trajan Pro
   #     fonts:
   #       - asset: fonts/TrajanPro.ttf
