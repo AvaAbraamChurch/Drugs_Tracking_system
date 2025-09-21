@@ -26,6 +26,7 @@ void main() async {
   final supabaseUrl = dotenv.env['SUPABASE_URL']!;
   final supabaseKey = dotenv.env['SUPABASE_KEY']!;
 
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
   await Supabase.initialize(url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
   await NotificationsService.initialize();
 

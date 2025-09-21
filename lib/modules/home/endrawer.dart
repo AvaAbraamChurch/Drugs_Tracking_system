@@ -4,6 +4,7 @@ import 'package:pharmanow/shared/widgets.dart';
 
 import '../../core/utils/notifications_service.dart';
 import '../notifications/notification_center_screen.dart';
+import '../notifications/notification_settings_screen.dart';
 
 class EndDrawer extends StatelessWidget {
   const EndDrawer({Key? key}) : super(key: key);
@@ -56,6 +57,13 @@ class EndDrawer extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Failed to show notification: $e')));
               }
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.settings, color: primaryColor,),
+            title: Text('Notifications Settings'),
+            onTap: () {
+              navigateTo(context, NotificationSettingsScreen());
             },
           ),
         ],
