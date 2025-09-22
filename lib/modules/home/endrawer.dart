@@ -7,7 +7,7 @@ import '../notifications/notification_center_screen.dart';
 import '../notifications/notification_settings_screen.dart';
 
 class EndDrawer extends StatelessWidget {
-  const EndDrawer({Key? key}) : super(key: key);
+  const EndDrawer({super.key});
 
   @override
   Widget build(BuildContext context) {

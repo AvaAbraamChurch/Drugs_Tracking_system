@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/utils/notifications_service.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
-  const NotificationSettingsScreen({Key? key}) : super(key: key);
+  const NotificationSettingsScreen({super.key});
 
   @override
   State<NotificationSettingsScreen> createState() => _NotificationSettingsScreenState();
@@ -201,7 +201,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                           // Check interval
                           ListTile(
                             title: const Text('Check Interval'),
-                            subtitle: Text('Check for issues every ${_checkInterval} minutes'),
+                            subtitle: Text('Check for issues every $_checkInterval minutes'),
                             trailing: DropdownButton<int>(
                               value: _checkInterval,
                               items: _intervalOptions.map((interval) {
@@ -251,13 +251,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
 
                           ListTile(
                             title: const Text('Low Stock Threshold'),
-                            subtitle: Text('Alert when stock reaches ${_stockThreshold} units or below'),
+                            subtitle: Text('Alert when stock reaches $_stockThreshold units or below'),
                             trailing: DropdownButton<int>(
                               value: _stockThreshold,
                               items: _stockThresholdOptions.map((threshold) {
                                 return DropdownMenuItem(
                                   value: threshold,
-                                  child: Text('${threshold} units'),
+                                  child: Text('$threshold units'),
                                 );
                               }).toList(),
                               onChanged: _notificationsEnabled ? (value) {
@@ -301,13 +301,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
 
                           ListTile(
                             title: const Text('Expiry Warning Period'),
-                            subtitle: Text('Alert ${_expiryDaysAhead} days before expiry'),
+                            subtitle: Text('Alert $_expiryDaysAhead days before expiry'),
                             trailing: DropdownButton<int>(
                               value: _expiryDaysAhead,
                               items: _expiryDaysOptions.map((days) {
                                 return DropdownMenuItem(
                                   value: days,
-                                  child: Text('${days} days'),
+                                  child: Text('$days days'),
                                 );
                               }).toList(),
                               onChanged: _notificationsEnabled ? (value) {

@@ -7,7 +7,7 @@ import '../../core/repositories/drugs_repositories.dart';
 
 class InsertDrugScreen extends StatefulWidget {
   final cubit;
-  InsertDrugScreen({super.key, required this.cubit});
+  const InsertDrugScreen({super.key, required this.cubit});
 
   @override
   State<InsertDrugScreen> createState() => _InsertDrugScreenState();

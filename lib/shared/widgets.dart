@@ -1,7 +1,5 @@
-import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 void navigateTo(context, widget) => Navigator.push(
       context,
@@ -225,14 +223,14 @@ class CustomButton extends StatelessWidget {
   final double radius;
 
   const CustomButton({
-    Key? key,
+    super.key,
     required this.onPressed,
     required this.text,
     this.textColor = Colors.black,
     this.bgColor = Colors.white,
     this.textSize = 16,
     this.radius = 10,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -263,12 +261,12 @@ class CustomDatePicker extends StatefulWidget {
   final ValueChanged<DateTime>? onDateChanged;
 
   const CustomDatePicker({
-    Key? key,
+    super.key,
     this.label = 'Pick Date',
     this.initialDate,
     this.daysOffset,
     this.onDateChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<CustomDatePicker> createState() => _CustomDatePickerState();

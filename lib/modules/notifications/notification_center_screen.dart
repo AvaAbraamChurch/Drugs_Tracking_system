@@ -9,10 +9,10 @@ class NotificationCenterScreen extends StatefulWidget {
   final List<DrugModel>? filteredDrugs; // Optional pre-filtered drugs
 
   const NotificationCenterScreen({
-    Key? key,
+    super.key,
     this.notificationType,
     this.filteredDrugs,
-  }) : super(key: key);
+  });
 
   @override
   State<NotificationCenterScreen> createState() => _NotificationCenterScreenState();

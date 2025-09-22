@@ -440,7 +440,7 @@ class NotificationsService {
           await _showBackgroundNotification(
             drug.hashCode + 7000,
             'Drug Expiry Alert',
-            'The drug ${drug.name} will expire in ${daysUntilExpiry} day(s).',
+            'The drug ${drug.name} will expire in $daysUntilExpiry day(s).',
             'expiry',
             isUrgent: daysUntilExpiry <= 7,
           );
