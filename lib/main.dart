@@ -12,6 +12,7 @@ import 'shared/bloc_observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/utils/notifications_service.dart';
 import 'package:path_provider/path_provider.dart';
+import 'shared/version_check_wrapper.dart';
 
 
 // Use the navigator key from NotificationsService
@@ -84,8 +85,7 @@ class MyApp extends StatelessWidget {
           duration: 3000,
           splashTransition: SplashTransition.scaleTransition,
           backgroundColor: Colors.white,
-          nextScreen: startWidget,
-
+          nextScreen: VersionCheckWrapper(child: startWidget),
         ),
       ),
     );
@@ -128,4 +128,3 @@ Future<int> _getFolderSize(Directory dir) async {
   }
   return size;
 }
-
