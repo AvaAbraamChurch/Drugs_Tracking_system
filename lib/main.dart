@@ -11,6 +11,7 @@ import 'config.dart';
 import 'shared/bloc_observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/utils/notifications_service.dart';
+import 'core/services/supabase_image_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'shared/version_check_wrapper.dart';
 
@@ -28,8 +29,10 @@ void main() async {
   final supabaseKey = dotenv.env['SUPABASE_KEY']!;
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
-  await Supabase.initialize(url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
   await NotificationsService.initialize();
+
+  // Initialize Supabase image service
+  await SupabaseImageService.initialize();
 
 
 

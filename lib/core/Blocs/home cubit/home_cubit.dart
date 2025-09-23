@@ -17,15 +17,17 @@ class HomeCubit extends Cubit<HomeStates> {
     emit(HomeChangeBottomNavState());
   }
 
-
   List<DrugModel> drugs = [];
+
   void getDrugs() async {
     emit(GetDrugsLoadingState());
     try {
       final drugsList = await DrugsRepository().getAllDrugs();
       drugs = drugsList;
-      await NotificationsService.scheduleDrugExpiryNotifications(drugs);
-      await NotificationsService.scheduleDrugStockNotifications(drugs);
+
+      // Update notifications service with the latest drug list for real-time monitoring
+      // await NotificationsService.updateDrugsList(drugs);
+
       emit(GetDrugsSuccessState(drugs)); // Pass drugs to the state
     } catch (error) {
       emit(GetDrugsErrorState(error.toString()));
@@ -37,6 +39,10 @@ class HomeCubit extends Cubit<HomeStates> {
     emit(insertDrugsLoadingState());
     try {
       await DrugsRepository().addDrug(drug);
+
+      // Immediately refresh the list to show the new drug
+      getDrugs();
+
       emit(insertDrugsSuccessState());
     } catch (error) {
       emit(insertDrugsErrorState(error.toString()));
@@ -48,15 +54,24 @@ class HomeCubit extends Cubit<HomeStates> {
     emit(updateDrugsLoadingState());
     try {
       await DrugsRepository().updateDrug(drug);
-      // Update the local drugs list
+
+      // Update the local drugs list immediately for real-time response
       final index = drugs.indexWhere((d) => d.id == drug.id);
       if (index != -1) {
         drugs[index] = drug;
+        // Update the state immediately with the modified list
+        emit(GetDrugsSuccessState(List.from(drugs)));
       }
+
       // Check and notify about stock levels after update
       await NotificationsService.checkAndNotifyStockLevels([drug]);
+
+      // Update the notifications service with the current drug list
+      await NotificationsService.updateDrugsList(drugs);
+
       emit(updateDrugsSuccessState());
-      // Refresh the drugs list to get updated data
+
+      // Refresh the complete drugs list from database to ensure consistency
       getDrugs();
     } catch (error) {
       emit(updateDrugsErrorState(error.toString()));
@@ -68,12 +83,22 @@ class HomeCubit extends Cubit<HomeStates> {
     emit(deleteDrugsLoadingState());
     try {
       await DrugsRepository().deleteDrug(id);
+
+      // Remove the drug from local list immediately for real-time response
+      drugs.removeWhere((drug) => drug.id == id);
+      emit(GetDrugsSuccessState(List.from(drugs)));
+
+      // Update notifications service with the updated list
+      await NotificationsService.updateDrugsList(drugs);
+
       emit(deleteDrugsSuccessState());
+
+      // Refresh the complete drugs list to ensure consistency
+      getDrugs();
     } catch (error) {
       emit(deleteDrugsErrorState(error.toString()));
       print(error.toString());
     }
   }
-
 
 }

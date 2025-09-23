@@ -6,14 +6,58 @@ import 'package:pharmanow/core/Blocs/home%20cubit/home_states.dart';
 import 'package:pharmanow/core/styles/colors.dart';
 import 'package:pharmanow/modules/home/search_screen.dart';
 import 'package:pharmanow/shared/widgets.dart';
+import 'dart:async';
 
 import '../../core/Blocs/home cubit/home_cubit.dart';
+import '../../core/utils/notifications_service.dart';
+import '../../core/services/supabase_image_service.dart';
 import 'edit_drug_screen.dart';
 import 'endrawer.dart';
 import 'insert_drug_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startRealTimeUpdates();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Refresh data when app comes to foreground
+      final cubit = HomeCubit.get(context);
+      cubit.getDrugs();
+    }
+  }
+
+  void _startRealTimeUpdates() {
+    // Refresh the drug list every 30 seconds for real-time updates
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        final cubit = HomeCubit.get(context);
+        cubit.getDrugs();
+      }
+    });
+  }
 
   Color _getStockColor(int stock) {
     if (stock <= 5) return Colors.red;
@@ -264,11 +308,34 @@ class HomeScreen extends StatelessWidget {
                                 color: _getStockColor(drug.stock).withAlpha(30),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Icon(
-                                Icons.medication,
-                                color: _getStockColor(drug.stock),
-                                size: 24,
-                              ),
+                              child: drug.imageUrl.isNotEmpty
+                                  ? SupabaseImageService.buildNetworkImage(
+                                      imageUrl: drug.imageUrl,
+                                      width: 50,
+                                      height: 50,
+                                      fit: BoxFit.cover,
+                                      placeholder: Container(
+                                        decoration: BoxDecoration(
+                                          color: _getStockColor(drug.stock).withAlpha(30),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(
+                                          Icons.medication,
+                                          color: _getStockColor(drug.stock),
+                                          size: 24,
+                                        ),
+                                      ),
+                                      errorWidget: Icon(
+                                        Icons.medication,
+                                        color: _getStockColor(drug.stock),
+                                        size: 24,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.medication,
+                                      color: _getStockColor(drug.stock),
+                                      size: 24,
+                                    ),
                             ),
                           ),
                           title: Text(
@@ -362,7 +429,48 @@ class HomeScreen extends StatelessWidget {
         );
 
       },
-      listener: (BuildContext context, state) {  },
+      listener: (BuildContext context, state) {
+        // Handle state changes for real-time updates
+        if (state is GetDrugsSuccessState) {
+          // Force rebuild when drug list is updated
+          if (mounted) {
+            setState(() {});
+          }
+        }
+
+        if (state is insertDrugsSuccessState) {
+          // Show success message and refresh immediately
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Drug added successfully!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
+        if (state is updateDrugsSuccessState) {
+          // Show success message for updates
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Drug updated successfully!'),
+              backgroundColor: Colors.blue,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
+        if (state is deleteDrugsSuccessState) {
+          // Show success message for deletions
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Drug deleted successfully!'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      },
     );
   }
 }

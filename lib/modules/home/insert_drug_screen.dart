@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../core/models/Drugs/drug_model.dart';
 import '../../core/repositories/drugs_repositories.dart';
+import '../../core/services/supabase_image_service.dart';
 
 class InsertDrugScreen extends StatefulWidget {
   final cubit;
@@ -18,11 +19,10 @@ class _InsertDrugScreenState extends State<InsertDrugScreen> {
   final _nameController = TextEditingController();
   final _stockController = TextEditingController();
   final _expiryDateController = TextEditingController();
-  final DrugsRepository _drugsRepository = DrugsRepository();
 
-  File? _selectedImage;
-  DateTime? _selectedDate;
+  XFile? _selectedImage;
   bool _isLoading = false;
+  bool _isUploadingImage = false;
 
   @override
   void dispose() {
@@ -41,7 +41,7 @@ class _InsertDrugScreenState extends State<InsertDrugScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
+            colorScheme: const ColorScheme.light(
               primary: Colors.blue,
               onPrimary: Colors.white,
               surface: Colors.white,
@@ -55,93 +55,29 @@ class _InsertDrugScreenState extends State<InsertDrugScreen> {
 
     if (picked != null) {
       setState(() {
-        _selectedDate = picked;
         _expiryDateController.text = picked.toIso8601String().split('T')[0];
       });
     }
   }
 
   Future<void> _pickImage() async {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Select Image Source',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade800,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _imageSourceOption(
-                  icon: Icons.camera_alt,
-                  label: 'Camera',
-                  onTap: () => _selectImageSource(ImageSource.camera),
-                ),
-                _imageSourceOption(
-                  icon: Icons.photo_library,
-                  label: 'Gallery',
-                  onTap: () => _selectImageSource(ImageSource.gallery),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
-    );
-  }
+    try {
+      final XFile? image = await SupabaseImageService.showImagePickerDialog(context);
 
-  Widget _imageSourceOption({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 40, color: Colors.blue),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Colors.blue,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _selectImageSource(ImageSource source) async {
-    Navigator.pop(context);
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: source);
-
-    if (image != null) {
-      setState(() {
-        _selectedImage = File(image.path);
-      });
+      if (image != null) {
+        setState(() {
+          _selectedImage = image;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -153,55 +89,60 @@ class _InsertDrugScreenState extends State<InsertDrugScreen> {
     });
 
     try {
+      String? imageUrl;
+
+      // Upload image to Supabase if selected
+      if (_selectedImage != null) {
+        setState(() {
+          _isUploadingImage = true;
+        });
+
+        // Generate a temporary drug ID for the image upload
+        final tempDrugId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
+        imageUrl = await SupabaseImageService.uploadImage(
+          imageFile: _selectedImage!,
+          drugId: tempDrugId,
+        );
+
+        setState(() {
+          _isUploadingImage = false;
+        });
+
+        if (imageUrl == null) {
+          throw Exception('Failed to upload image to Supabase');
+        }
+
+        print('Image uploaded successfully: $imageUrl');
+      }
+
       final drug = DrugModel(
         name: _nameController.text.trim(),
         stock: int.parse(_stockController.text.trim()),
-        expiryDate: _expiryDateController.text,
-        imageUrl: _selectedImage?.path ?? '',
+        expiryDate: _expiryDateController.text.trim(),
+        imageUrl: imageUrl ?? '',
       );
-      cubit.insertDrug(drug);
+
+      await widget.cubit.insertDrug(drug);
+
       if (mounted) {
+        Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('${drug.name} added successfully!'),
-                ),
-              ],
-            ),
+          const SnackBar(
+            content: Text('Drug added successfully!'),
             backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+            duration: Duration(seconds: 2),
           ),
         );
-        Navigator.pop(context, true); // Return true to indicate success
       }
     } catch (e) {
+      print('Error in _saveDrug: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Error: ${e.toString()}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
+            content: Text('Error adding drug: $e'),
             backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -209,6 +150,7 @@ class _InsertDrugScreenState extends State<InsertDrugScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isUploadingImage = false;
         });
       }
     }
@@ -289,7 +231,7 @@ class _InsertDrugScreenState extends State<InsertDrugScreen> {
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(13),
                                   child: Image.file(
-                                    _selectedImage!,
+                                    File(_selectedImage!.path),
                                     fit: BoxFit.cover,
                                   ),
                                 )

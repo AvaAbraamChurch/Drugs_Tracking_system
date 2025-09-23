@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../core/models/Drugs/drug_model.dart';
 import '../../core/repositories/drugs_repositories.dart';
+import '../../core/services/supabase_image_service.dart';
 
 class EditDrugScreen extends StatefulWidget {
   final cubit;
@@ -20,10 +21,12 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
   final _nameController = TextEditingController();
   final _stockController = TextEditingController();
   final _expiryDateController = TextEditingController();
-  final DrugsRepository _drugsRepository = DrugsRepository();
 
-  File? _selectedImage;
+  XFile? _selectedImage;
+  String _currentImageUrl = '';
   bool _isLoading = false;
+  bool _isUploadingImage = false;
+  bool _imageRemoved = false;
 
   @override
   void initState() {
@@ -36,11 +39,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
     _nameController.text = drug.name;
     _stockController.text = drug.stock.toString();
     _expiryDateController.text = drug.expiryDate;
-
-    // Load existing image if available
-    if (drug.imageUrl.isNotEmpty) {
-      _selectedImage = File(drug.imageUrl);
-    }
+    _currentImageUrl = drug.imageUrl;
   }
 
   @override
@@ -56,12 +55,12 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
     DateTime initialDate = DateTime.now().add(const Duration(days: 30));
     if (_expiryDateController.text.isNotEmpty) {
       try {
-        final dateParts = _expiryDateController.text.split('/');
+        final dateParts = _expiryDateController.text.split('-');
         if (dateParts.length == 3) {
           initialDate = DateTime(
-            int.parse(dateParts[2]), // year
+            int.parse(dateParts[0]), // year
             int.parse(dateParts[1]), // month
-            int.parse(dateParts[0]), // day
+            int.parse(dateParts[2]), // day
           );
         }
       } catch (e) {
@@ -77,7 +76,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
+            colorScheme: const ColorScheme.light(
               primary: Colors.blue,
               onPrimary: Colors.white,
               surface: Colors.white,
@@ -132,7 +131,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                 _imageSourceOption(
                   icon: Icons.delete,
                   label: 'Remove',
-                  onTap: () => _removeImage(),
+                  onTap: () => _removeImageFromBottomSheet(),
                 ),
               ],
             ),
@@ -184,15 +183,24 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
 
     if (image != null) {
       setState(() {
-        _selectedImage = File(image.path);
+        _selectedImage = image;
+        _imageRemoved = false;
       });
     }
   }
 
-  void _removeImage() {
+  void _removeImageFromBottomSheet() {
     Navigator.pop(context);
     setState(() {
       _selectedImage = null;
+      _imageRemoved = true;
+    });
+  }
+
+  void _removeImage() {
+    setState(() {
+      _selectedImage = null;
+      _imageRemoved = true;
     });
   }
 
@@ -204,58 +212,69 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
     });
 
     try {
+      String? finalImageUrl = _currentImageUrl;
+
+      // Handle image changes
+      if (_imageRemoved) {
+        // User removed the image - delete from Supabase and set empty URL
+        if (_currentImageUrl.isNotEmpty) {
+          await SupabaseImageService.deleteImage(_currentImageUrl);
+        }
+        finalImageUrl = '';
+      } else if (_selectedImage != null) {
+        // User selected a new image - upload it
+        setState(() {
+          _isUploadingImage = true;
+        });
+
+        final String drugId = widget.drugToEdit.id?.toString() ?? 'drug_${DateTime.now().millisecondsSinceEpoch}';
+
+        finalImageUrl = await SupabaseImageService.uploadImage(
+          imageFile: _selectedImage!,
+          drugId: drugId,
+          existingImageUrl: _currentImageUrl.isNotEmpty ? _currentImageUrl : null,
+        );
+
+        setState(() {
+          _isUploadingImage = false;
+        });
+
+        if (finalImageUrl == null) {
+          throw Exception('Failed to upload image to Supabase');
+        }
+
+        print('Image uploaded successfully: $finalImageUrl');
+      }
+      // If no changes to image, keep the current URL
+
       final updatedDrug = DrugModel(
-        id: widget.drugToEdit.id, // Keep the same ID
+        id: widget.drugToEdit.id,
         name: _nameController.text.trim(),
         stock: int.parse(_stockController.text.trim()),
-        expiryDate: _expiryDateController.text,
-        imageUrl: _selectedImage?.path ?? '',
+        expiryDate: _expiryDateController.text.trim(),
+        imageUrl: finalImageUrl ?? '',
       );
 
-      await cubit.updateDrug(updatedDrug);
+      await widget.cubit.updateDrug(updatedDrug);
 
       if (mounted) {
+        Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('${updatedDrug.name} updated successfully!'),
-                ),
-              ],
-            ),
+          const SnackBar(
+            content: Text('Drug updated successfully!'),
             backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+            duration: Duration(seconds: 2),
           ),
         );
-        Navigator.pop(context, true); // Return true to indicate success
       }
     } catch (e) {
+      print('Error updating drug: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Error: ${e.toString()}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
+            content: Text('Error updating drug: $e'),
             backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -263,97 +282,99 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isUploadingImage = false;
         });
       }
     }
   }
 
-  Future<void> _deleteDrug(cubit) async {
-    final bool? confirmDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Drug'),
-        content: Text('Are you sure you want to delete "${widget.drugToEdit.name}"? This action cannot be undone.'),
-        shape: RoundedRectangleBorder(
+  Widget _buildImagePreview() {
+    if (_imageRemoved) {
+      // Show placeholder when image is removed
+      return Container(
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
           borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.grey.shade300, width: 2),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_a_photo, size: 40, color: Colors.grey.shade400),
+            const SizedBox(height: 8),
+            Text('Add Image', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      );
+    } else if (_selectedImage != null) {
+      // Show new selected image
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Image.file(
+          File(_selectedImage!.path),
+          width: 120,
+          height: 120,
+          fit: BoxFit.cover,
+        ),
+      );
+    } else if (_currentImageUrl.isNotEmpty) {
+      // Show existing image from Supabase
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: SupabaseImageService.buildNetworkImage(
+          imageUrl: _currentImageUrl,
+          width: 120,
+          height: 120,
+          fit: BoxFit.cover,
+          placeholder: Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Center(child: CircularProgressIndicator()),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+          errorWidget: Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.grey.shade300, width: 2),
             ),
-            child: const Text('Delete'),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_a_photo, size: 40, color: Colors.grey.shade400),
+                const SizedBox(height: 8),
+                Text('Add Image', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+              ],
+            ),
           ),
-        ],
-      ),
-    );
-
-    if (confirmDelete == true) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      try {
-        await cubit.deleteDrug(widget.drugToEdit.id);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.delete, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('${widget.drugToEdit.name} deleted successfully!'),
-                  ),
-                ],
-              ),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
-          Navigator.pop(context, true); // Return true to indicate success
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.error, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Error deleting drug: ${e.toString()}',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      }
+        ),
+      );
+    } else {
+      // Show placeholder when no image
+      return Container(
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.grey.shade300, width: 2),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_a_photo, size: 40, color: Colors.grey.shade400),
+            const SizedBox(height: 8),
+            Text('Add Image', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      );
     }
   }
 
@@ -392,11 +413,6 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                 ),
                 const Spacer(),
                 IconButton(
-                  onPressed: () => _deleteDrug(widget.cubit),
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  tooltip: 'Delete Drug',
-                ),
-                IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),
                   style: IconButton.styleFrom(
@@ -420,58 +436,55 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                   children: [
                     // Drug Image Section
                     Center(
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(15),
-                            border: Border.all(
-                              color: Colors.grey.shade300,
-                              width: 2,
+                      child: Stack(
+                        children: [
+                          GestureDetector(
+                            onTap: _pickImage,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(color: Colors.grey.shade300, width: 2),
+                              ),
+                              child: _buildImagePreview(),
                             ),
                           ),
-                          child: _selectedImage != null
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(13),
-                                  child: Image.file(
-                                    _selectedImage!,
-                                    fit: BoxFit.cover,
+                          if (_currentImageUrl.isNotEmpty || _selectedImage != null)
+                            Positioned(
+                              top: 5,
+                              right: 5,
+                              child: GestureDetector(
+                                onTap: _removeImage,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
                                   ),
-                                )
-                              : Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.edit_rounded,
-                                        size: 28,
-                                        color: Colors.blue.shade600,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Flexible(
-                                        child: Text(
-                                          'Update Image',
-                                          style: TextStyle(
-                                            color: Colors.blue.shade600,
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 10,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 2,
-                                        ),
-                                      ),
-                                    ],
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 16,
                                   ),
                                 ),
-                        ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
+
+                    if (_isUploadingImage)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 10),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 8),
+                              Text('Uploading image...', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ),
 
                     const SizedBox(height: 30),
 
@@ -530,9 +543,6 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                     ),
 
                     const SizedBox(height: 30),
-
-
-                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -569,7 +579,7 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : () => _updateDrug(widget.cubit),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Colors.green,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
