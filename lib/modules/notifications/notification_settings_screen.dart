@@ -20,7 +20,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   int _quietHoursStart = 22; // 10 PM
   int _quietHoursEnd = 7; // 7 AM
   bool _dailyReminderEnabled = true;
-  int _dailyReminderHour = 9; // 9 AM
+  TimeOfDay _dailyReminderTime = const TimeOfDay(hour: 9, minute: 0); // 9:00 AM
 
   // Dropdown options
   final List<int> _intervalOptions = [5, 10, 15, 30, 45, 60, 120, 180]; // minutes
@@ -47,7 +47,10 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         _quietHoursStart = settings['quietHoursStart'] as int;
         _quietHoursEnd = settings['quietHoursEnd'] as int;
         _dailyReminderEnabled = settings['dailyReminderEnabled'] as bool;
-        _dailyReminderHour = settings['dailyReminderHour'] as int;
+        _dailyReminderTime = TimeOfDay(
+          hour: settings['dailyReminderHour'] as int,
+          minute: settings['dailyReminderMinute'] as int,
+        );
         _isLoading = false;
       });
     } catch (e) {
@@ -68,7 +71,8 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         quietHoursStart: _quietHoursStart,
         quietHoursEnd: _quietHoursEnd,
         dailyReminderEnabled: _dailyReminderEnabled,
-        dailyReminderHour: _dailyReminderHour,
+        dailyReminderHour: _dailyReminderTime.hour,
+        dailyReminderMinute: _dailyReminderTime.minute,
       );
 
       setState(() => _isSaving = false);
@@ -99,7 +103,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     );
   }
 
-  String _formatHour(int hour) {
+  String _formatHour(TimeOfDay time) {
+    final period = time.hour >= 12 ? 'PM' : 'AM';
+    final displayHour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    return '$displayHour:${time.minute.toString().padLeft(2, '0')} $period';
+  }
+
+  String _formatHourFromInt(int hour) {
     final period = hour >= 12 ? 'PM' : 'AM';
     final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
     return '$displayHour:00 $period';
@@ -362,7 +372,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                               Expanded(
                                 child: ListTile(
                                   title: const Text('Start Time'),
-                                  subtitle: Text(_formatHour(_quietHoursStart)),
+                                  subtitle: Text(_formatHourFromInt(_quietHoursStart)),
                                   trailing: const Icon(Icons.access_time),
                                   onTap: _notificationsEnabled ? () async {
                                     final time = await showTimePicker(
@@ -378,7 +388,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                               Expanded(
                                 child: ListTile(
                                   title: const Text('End Time'),
-                                  subtitle: Text(_formatHour(_quietHoursEnd)),
+                                  subtitle: Text(_formatHourFromInt(_quietHoursEnd)),
                                   trailing: const Icon(Icons.access_time),
                                   onTap: _notificationsEnabled ? () async {
                                     final time = await showTimePicker(
@@ -437,15 +447,15 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                           if (_dailyReminderEnabled)
                             ListTile(
                               title: const Text('Reminder Time'),
-                              subtitle: Text('Daily reminder at ${_formatHour(_dailyReminderHour)}'),
+                              subtitle: Text('Daily reminder at ${_formatHour(_dailyReminderTime)}'),
                               trailing: const Icon(Icons.access_time),
                               onTap: _notificationsEnabled ? () async {
                                 final time = await showTimePicker(
                                   context: context,
-                                  initialTime: TimeOfDay(hour: _dailyReminderHour, minute: 0),
+                                  initialTime: _dailyReminderTime,
                                 );
                                 if (time != null) {
-                                  setState(() => _dailyReminderHour = time.hour);
+                                  setState(() => _dailyReminderTime = time);
                                 }
                               } : null,
                             ),

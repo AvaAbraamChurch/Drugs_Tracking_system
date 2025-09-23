@@ -10,6 +10,7 @@ class NotificationsService {
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   static Timer? _periodicCheckTimer;
   static Timer? _backgroundPushTimer;
+  static Timer? _dailyReminderTimer;
   static List<dynamic> _cachedDrugs = [];
 
   // Notification settings with defaults
@@ -19,7 +20,8 @@ class NotificationsService {
   static const String _prefKeyNotificationsEnabled = 'notifications_enabled';
   static const String _prefKeyQuietHoursStart = 'quiet_hours_start';
   static const String _prefKeyQuietHoursEnd = 'quiet_hours_end';
-  static const String _prefKeyDailyReminderTime = 'daily_reminder_time';
+  static const String _prefKeyDailyReminderTimeHour = 'daily_reminder_time_hour';
+  static const String _prefKeyDailyReminderTimeMinute = 'daily_reminder_time_minute';
   static const String _prefKeyDailyReminderEnabled = 'daily_reminder_enabled';
 
   // Default values
@@ -30,6 +32,7 @@ class NotificationsService {
   static const int _defaultQuietHoursStart = 22; // 10 PM
   static const int _defaultQuietHoursEnd = 7;   // 7 AM
   static const int _defaultDailyReminderHour = 9; // 9 AM
+  static const int _defaultDailyReminderMinute = 0; // 00 minutes
   static const bool _defaultDailyReminderEnabled = true;
 
   static Future<void> initialize() async {
@@ -274,6 +277,7 @@ class NotificationsService {
   static void dispose() {
     _periodicCheckTimer?.cancel();
     _backgroundPushTimer?.cancel();
+    _dailyReminderTimer?.cancel();
     _cachedDrugs.clear();
     print('NotificationsService disposed');
   }
@@ -290,7 +294,8 @@ class NotificationsService {
       'notificationsEnabled': prefs.getBool(_prefKeyNotificationsEnabled) ?? _defaultNotificationsEnabled,
       'quietHoursStart': prefs.getInt(_prefKeyQuietHoursStart) ?? _defaultQuietHoursStart,
       'quietHoursEnd': prefs.getInt(_prefKeyQuietHoursEnd) ?? _defaultQuietHoursEnd,
-      'dailyReminderHour': prefs.getInt(_prefKeyDailyReminderTime) ?? _defaultDailyReminderHour,
+      'dailyReminderHour': prefs.getInt(_prefKeyDailyReminderTimeHour) ?? _defaultDailyReminderHour,
+      'dailyReminderMinute': prefs.getInt(_prefKeyDailyReminderTimeMinute) ?? _defaultDailyReminderMinute,
       'dailyReminderEnabled': prefs.getBool(_prefKeyDailyReminderEnabled) ?? _defaultDailyReminderEnabled,
     };
   }
@@ -304,6 +309,7 @@ class NotificationsService {
     int? quietHoursStart,
     int? quietHoursEnd,
     int? dailyReminderHour,
+    int? dailyReminderMinute,
     bool? dailyReminderEnabled,
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -314,7 +320,8 @@ class NotificationsService {
     if (notificationsEnabled != null) await prefs.setBool(_prefKeyNotificationsEnabled, notificationsEnabled);
     if (quietHoursStart != null) await prefs.setInt(_prefKeyQuietHoursStart, quietHoursStart);
     if (quietHoursEnd != null) await prefs.setInt(_prefKeyQuietHoursEnd, quietHoursEnd);
-    if (dailyReminderHour != null) await prefs.setInt(_prefKeyDailyReminderTime, dailyReminderHour);
+    if (dailyReminderHour != null) await prefs.setInt(_prefKeyDailyReminderTimeHour, dailyReminderHour);
+    if (dailyReminderMinute != null) await prefs.setInt(_prefKeyDailyReminderTimeMinute, dailyReminderMinute);
     if (dailyReminderEnabled != null) await prefs.setBool(_prefKeyDailyReminderEnabled, dailyReminderEnabled);
 
     // Restart background service with new settings
@@ -332,11 +339,11 @@ class NotificationsService {
     final quietEnd = settings['quietHoursEnd'] as int;
 
     if (quietStart < quietEnd) {
-      // Same day quiet hours (e.g., 22:00 to 7:00 next day)
-      return currentHour >= quietStart || currentHour < quietEnd;
+      // Same day quiet hours (e.g., 10:00 AM to 6:00 PM)
+      return currentHour >= quietStart && currentHour < quietEnd;
     } else {
       // Quiet hours span midnight (e.g., 10:00 PM to 7:00 AM)
-      return currentHour >= quietStart && currentHour < quietEnd;
+      return currentHour >= quietStart || currentHour < quietEnd;
     }
   }
 
@@ -492,10 +499,11 @@ class NotificationsService {
   static void _scheduleDailyReminder() async {
     final settings = await getNotificationSettings();
     final reminderHour = settings['dailyReminderHour'] as int;
+    final reminderMinute = settings['dailyReminderMinute'] as int;
 
     // Calculate time until next reminder
     final now = DateTime.now();
-    var nextReminder = DateTime(now.year, now.month, now.day, reminderHour);
+    var nextReminder = DateTime(now.year, now.month, now.day, reminderHour, reminderMinute);
 
     if (nextReminder.isBefore(now)) {
       nextReminder = nextReminder.add(const Duration(days: 1));
@@ -503,13 +511,17 @@ class NotificationsService {
 
     final timeUntilReminder = nextReminder.difference(now);
 
-    Timer(timeUntilReminder, () async {
+    // Cancel any existing daily reminder timer
+    _dailyReminderTimer?.cancel();
+
+    // Schedule the daily reminder
+    _dailyReminderTimer = Timer(timeUntilReminder, () async {
       if (!await _isInQuietHours()) {
         await _showDailyReminder();
       }
 
       // Schedule next day's reminder
-      Timer.periodic(const Duration(days: 1), (timer) async {
+      _dailyReminderTimer = Timer.periodic(const Duration(days: 1), (timer) async {
         if (!await _isInQuietHours()) {
           await _showDailyReminder();
         }
