@@ -26,7 +26,7 @@ class HomeCubit extends Cubit<HomeStates> {
       drugs = drugsList;
 
       // Update notifications service with the latest drug list for real-time monitoring
-      // await NotificationsService.updateDrugsList(drugs);
+      await NotificationsService.updateDrugsList(drugs);
 
       emit(GetDrugsSuccessState(drugs)); // Pass drugs to the state
     } catch (error) {
