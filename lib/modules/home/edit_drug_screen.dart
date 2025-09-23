@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../core/models/Drugs/drug_model.dart';
-import '../../core/repositories/drugs_repositories.dart';
 import '../../core/services/supabase_image_service.dart';
 
 class EditDrugScreen extends StatefulWidget {

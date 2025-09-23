@@ -7,7 +7,6 @@ import 'package:pharmanow/core/Blocs/home%20cubit/home_cubit.dart';
 import 'package:pharmanow/core/styles/theme.dart';
 import 'package:pharmanow/modules/home/home_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'config.dart';
 import 'shared/bloc_observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/utils/notifications_service.dart';

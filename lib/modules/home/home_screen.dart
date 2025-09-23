@@ -9,7 +9,6 @@ import 'package:pharmanow/shared/widgets.dart';
 import 'dart:async';
 
 import '../../core/Blocs/home cubit/home_cubit.dart';
-import '../../core/utils/notifications_service.dart';
 import '../../core/services/supabase_image_service.dart';
 import 'edit_drug_screen.dart';
 import 'endrawer.dart';
