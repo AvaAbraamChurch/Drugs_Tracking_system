@@ -5,11 +5,13 @@ import 'package:pharmanow/core/Blocs/home%20cubit/home_states.dart';
 import 'package:pharmanow/core/models/Drugs/drug_model.dart';
 
 class NotificationCenterScreen extends StatefulWidget {
+  final String? notificationPayload; // For compatibility with NotificationsService
   final String? notificationType; // 'expiry' or 'stock'
   final List<DrugModel>? filteredDrugs; // Optional pre-filtered drugs
 
   const NotificationCenterScreen({
     super.key,
+    this.notificationPayload,
     this.notificationType,
     this.filteredDrugs,
   });
@@ -20,6 +22,22 @@ class NotificationCenterScreen extends StatefulWidget {
 
 class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   String selectedTab = 'all';
+
+  @override
+  void initState() {
+    super.initState();
+    // Handle notification payload to set initial tab
+    if (widget.notificationPayload != null) {
+      if (widget.notificationPayload!.contains('low_stock') ||
+          widget.notificationPayload!.contains('stock')) {
+        selectedTab = 'stock';
+      } else if (widget.notificationPayload!.contains('expiry')) {
+        selectedTab = 'expiry';
+      }
+    } else if (widget.notificationType != null) {
+      selectedTab = widget.notificationType!;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
