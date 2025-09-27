@@ -9,6 +9,7 @@ import 'package:pharmanow/modules/home/home_screen.dart';
 import 'package:pharmanow/modules/notifications/notification_center_screen.dart';
 import 'package:pharmanow/modules/notifications/notification_settings_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'config.dart';
 import 'shared/bloc_observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/utils/notifications_service.dart';
@@ -30,6 +31,7 @@ void main() async {
   final supabaseKey = dotenv.env['SUPABASE_KEY']!;
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
+  await Supabase.initialize(url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
 
   // Initialize NotificationsService with WorkManager for background processing
   try {

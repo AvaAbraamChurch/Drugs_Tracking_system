@@ -46,7 +46,7 @@ class VersionCheckService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        String tagName = data['tag_name'] as String;
+        String tagName = (data['tag_name'] as String).trim();
 
         // Remove 'v' prefix if present (e.g., 'v1.0.0' -> '1.0.0')
         if (tagName.startsWith('v')) {
@@ -67,8 +67,17 @@ class VersionCheckService {
   /// Compares two version strings
   /// Returns: 1 if version1 > version2, -1 if version1 < version2, 0 if equal
   static int _compareVersions(String version1, String version2) {
-    final v1Parts = version1.split('.').map(int.parse).toList();
-    final v2Parts = version2.split('.').map(int.parse).toList();
+    List<int> parse(String v) {
+      // Handle pre-release/build metadata e.g., 1.0.0-beta+001 by parsing leading digits of each part
+      final parts = v.split('.');
+      return parts.map((p) {
+        final m = RegExp(r'^(\d+)').firstMatch(p.trim());
+        return m != null ? int.parse(m.group(1)!) : 0;
+      }).toList();
+    }
+
+    final v1Parts = parse(version1);
+    final v2Parts = parse(version2);
 
     final maxLength = v1Parts.length > v2Parts.length ? v1Parts.length : v2Parts.length;
 
@@ -137,7 +146,7 @@ class VersionCheckService {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('A new version of PharmaNav is available!'),
+                  Text('A new version of PharmaNow is available!'),
                   const SizedBox(height: 8),
                   Text('Current version: $currentVersion'),
                   Text('Latest version: $latestVersion'),
