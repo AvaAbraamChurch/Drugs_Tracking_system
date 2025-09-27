@@ -33,7 +33,10 @@ void main() async {
 
   // Initialize NotificationsService with WorkManager for background processing
   try {
-    await NotificationsService.initialize();
+    await NotificationsService.initialize(
+      supabaseUrl: supabaseUrl,
+      supabaseKey: supabaseKey,
+    );
 
     print('✅ NotificationsService initialized successfully');
   } catch (e) {
