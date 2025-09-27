@@ -6,6 +6,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:pharmanow/core/Blocs/home%20cubit/home_cubit.dart';
 import 'package:pharmanow/core/styles/theme.dart';
 import 'package:pharmanow/modules/home/home_screen.dart';
+import 'package:pharmanow/modules/notifications/notification_center_screen.dart';
+import 'package:pharmanow/modules/notifications/notification_settings_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'shared/bloc_observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -28,11 +30,21 @@ void main() async {
   final supabaseKey = dotenv.env['SUPABASE_KEY']!;
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
-  await NotificationsService.initialize();
+
+  // Initialize NotificationsService with WorkManager for background processing
+  try {
+    await NotificationsService.initialize(
+      supabaseUrl: supabaseUrl,
+      supabaseKey: supabaseKey,
+    );
+
+    print('✅ NotificationsService initialized successfully');
+  } catch (e) {
+    print('❌ Error initializing NotificationsService: $e');
+  }
 
   // Initialize Supabase image service
   await SupabaseImageService.initialize();
-
 
 
   // await Hive.initFlutter();
@@ -82,8 +94,15 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
 
         theme: theme,
+        routes: {
+          '/notification-center': (context) {
+            final payload = ModalRoute.of(context)?.settings.arguments as String?;
+            return NotificationCenterScreen(notificationPayload: payload);
+          },
+          '/notification-settings': (context) => const NotificationSettingsScreen(),
+        },
         home: AnimatedSplashScreen(
-          splash: Image.asset('assets/images/logo.webp',width: 500,height: 500,),
+          splash: Image.asset('assets/images/PharmaNow.webp',width: 500,height: 500,),
           duration: 3000,
           splashTransition: SplashTransition.scaleTransition,
           backgroundColor: Colors.white,

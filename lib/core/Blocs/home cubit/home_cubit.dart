@@ -10,13 +10,6 @@ class HomeCubit extends Cubit<HomeStates> {
 
   static HomeCubit get(context) => BlocProvider.of(context);
 
-  int currentIndex = 0;
-
-  void changeBottomNav(int index) {
-    currentIndex = index;
-    emit(HomeChangeBottomNavState());
-  }
-
   List<DrugModel> drugs = [];
 
   void getDrugs() async {
@@ -25,8 +18,11 @@ class HomeCubit extends Cubit<HomeStates> {
       final drugsList = await DrugsRepository().getAllDrugs();
       drugs = drugsList;
 
+      // Convert DrugModel objects to maps for notification service
+      final drugsData = drugs.map((drug) => drug.toJson()).toList();
+
       // Update notifications service with the latest drug list for real-time monitoring
-      await NotificationsService.updateDrugsList(drugs);
+      await NotificationsService.monitorAndTriggerCriticalAlerts(drugsData);
 
       emit(GetDrugsSuccessState(drugs)); // Pass drugs to the state
     } catch (error) {
@@ -63,11 +59,14 @@ class HomeCubit extends Cubit<HomeStates> {
         emit(GetDrugsSuccessState(List.from(drugs)));
       }
 
-      // Check and notify about stock levels after update
-      await NotificationsService.checkAndNotifyStockLevels([drug]);
+      // Convert to maps for notification service
+      final drugsData = drugs.map((drug) => drug.toJson()).toList();
+
+      // Check and notify about critical situations after update
+      await NotificationsService.monitorAndTriggerCriticalAlerts(drugsData);
 
       // Update the notifications service with the current drug list
-      await NotificationsService.updateDrugsList(drugs);
+      await NotificationsService.updateDrugsList(drugsData);
 
       emit(updateDrugsSuccessState());
 
@@ -88,8 +87,11 @@ class HomeCubit extends Cubit<HomeStates> {
       drugs.removeWhere((drug) => drug.id == id);
       emit(GetDrugsSuccessState(List.from(drugs)));
 
+      // Convert to maps for notification service
+      final drugsData = drugs.map((drug) => drug.toJson()).toList();
+
       // Update notifications service with the updated list
-      await NotificationsService.updateDrugsList(drugs);
+      await NotificationsService.updateDrugsList(drugsData);
 
       emit(deleteDrugsSuccessState());
 

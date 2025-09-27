@@ -18,8 +18,8 @@ class DrugModel {
       id: json['id'] as int? ?? 0,
       name: json['name'] as String? ?? '',
       stock: json['stock'] as int? ?? 0,
-      expiryDate: json['expiryDate'] as String? ?? '',
-      imageUrl: json['imageUrl'] as String? ?? '',
+      expiryDate: (json['expiryDate'] ?? json['expiry_date']) as String? ?? '',
+      imageUrl: (json['imageUrl'] ?? json['image_url']) as String? ?? '',
     );
   }
 

@@ -24,7 +24,7 @@ class EndDrawer extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 28,
-                  backgroundImage: AssetImage('assets/images/PHARMANOW.png'),
+                  backgroundImage: AssetImage('assets/images/PharmaNow.webp'),
                 ),
                 SizedBox(height: 12),
                 Text(

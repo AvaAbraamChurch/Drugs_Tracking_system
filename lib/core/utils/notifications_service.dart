@@ -1,577 +1,542 @@
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest.dart' as tz;
-import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../modules/notifications/notification_center_screen.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:workmanager/workmanager.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../core/repositories/drugs_repositories.dart';
+import '../../core/models/Drugs/drug_model.dart';
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    try {
+      await NotificationsService._ensureTimezoneInit();
+      await NotificationsService._initNotificationsPluginIfNeeded();
+      await NotificationsService._backgroundEnsureSupabase();
+
+      await NotificationsService._performCheckAndNotify(isFromBackground: true);
+
+      return Future.value(true);
+    } catch (e) {
+      // Best-effort logging; background isolate has no console sometimes
+      return Future.value(false);
+    }
+  });
+}
 
 class NotificationsService {
-  static final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  // Public navigator key used by MaterialApp
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-  static Timer? _periodicCheckTimer;
-  static Timer? _backgroundPushTimer;
-  static Timer? _dailyReminderTimer;
-  static List<dynamic> _cachedDrugs = [];
 
-  // Notification settings with defaults
-  static const String _prefKeyCheckInterval = 'notification_check_interval';
-  static const String _prefKeyStockThreshold = 'stock_threshold';
-  static const String _prefKeyExpiryDays = 'expiry_days_ahead';
-  static const String _prefKeyNotificationsEnabled = 'notifications_enabled';
-  static const String _prefKeyQuietHoursStart = 'quiet_hours_start';
-  static const String _prefKeyQuietHoursEnd = 'quiet_hours_end';
-  static const String _prefKeyDailyReminderTimeHour = 'daily_reminder_time_hour';
-  static const String _prefKeyDailyReminderTimeMinute = 'daily_reminder_time_minute';
-  static const String _prefKeyDailyReminderEnabled = 'daily_reminder_enabled';
+  // Channels
+  static const String _channelStockId = 'pharmanow_low_stock';
+  static const String _channelExpiryId = 'pharmanow_expiry';
+  static const String _channelDailyId = 'pharmanow_daily';
 
-  // Default values
-  static const int _defaultCheckInterval = 30; // minutes
-  static const int _defaultStockThreshold = 5;
-  static const int _defaultExpiryDaysAhead = 30;
-  static const bool _defaultNotificationsEnabled = true;
-  static const int _defaultQuietHoursStart = 22; // 10 PM
-  static const int _defaultQuietHoursEnd = 7;   // 7 AM
-  static const int _defaultDailyReminderHour = 9; // 9 AM
-  static const int _defaultDailyReminderMinute = 0; // 00 minutes
-  static const bool _defaultDailyReminderEnabled = true;
+  static const String _workTag = 'pharmanow_background_check';
+  static const String _workUniqueName = 'pharmanow_periodic_check';
 
-  static Future<void> initialize() async {
-    tz.initializeTimeZones();
+  // Settings keys
+  static const String _kNotificationsEnabled = 'notificationsEnabled';
+  static const String _kCheckInterval = 'checkInterval'; // minutes
+  static const String _kStockThreshold = 'stockThreshold';
+  static const String _kExpiryDaysAhead = 'expiryDaysAhead';
+  static const String _kQuietStart = 'quietHoursStart'; // 0-23
+  static const String _kQuietEnd = 'quietHoursEnd'; // 0-23
+  static const String _kDailyEnabled = 'dailyReminderEnabled';
+  static const String _kDailyHour = 'dailyReminderHour';
+  static const String _kDailyMinute = 'dailyReminderMinute';
+  static const String _kBgRunning = 'bg_running';
 
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const InitializationSettings settings = InitializationSettings(android: androidSettings);
+  // Store Supabase credentials for background isolate
+  static const String _kSupabaseUrl = 'supabase_url';
+  static const String _kSupabaseKey = 'supabase_key';
 
-    await _notificationsPlugin.initialize(
-      settings,
-      onDidReceiveNotificationResponse: _onNotificationTapped,
-    );
+  static final FlutterLocalNotificationsPlugin _flnp = FlutterLocalNotificationsPlugin();
+  static bool _notificationsInitialized = false;
+  static bool _timezoneInitialized = false;
 
-    // Request permission for notifications (not alarms)
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-
-    // Start periodic background checks instead of scheduling alarms
-    _startPeriodicChecks();
-
-    // Start the enhanced background push notification service
-    await startBackgroundPushService();
-
-    print('NotificationsService initialized with background push service');
-  }
-
-  /// Start periodic checks for drug stock and expiry (no alarms needed)
-  static void _startPeriodicChecks() {
-    // Stop any existing timer
-    _periodicCheckTimer?.cancel();
-
-    // Check every 30 minutes for stock/expiry issues
-    _periodicCheckTimer = Timer.periodic(const Duration(minutes: 30), (timer) {
-      if (_cachedDrugs.isNotEmpty) {
-        _performPeriodicCheck();
-      }
-    });
-
-    print('Started periodic checks every 30 minutes (no alarms required)');
-  }
-
-  /// Perform periodic check without using alarms
-  static Future<void> _performPeriodicCheck() async {
-    try {
-      await checkAndNotifyStockLevels(_cachedDrugs);
-      await _checkExpiryNotifications(_cachedDrugs);
-    } catch (e) {
-      print('Error during periodic check: $e');
+  // Initialize services (called from main.dart)
+  static Future<void> initialize({String? supabaseUrl, String? supabaseKey}) async {
+    // Persist Supabase creds if provided (main.dart can pass them)
+    if (supabaseUrl != null && supabaseKey != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kSupabaseUrl, supabaseUrl);
+      await prefs.setString(_kSupabaseKey, supabaseKey);
     }
+
+    await _ensureTimezoneInit();
+    await _initNotificationsPluginIfNeeded();
+
+    // Request permissions when applicable
+    await _requestPlatformPermissions();
+
+    // Ensure default settings exist
+    await _ensureDefaultSettings();
+
+    // Schedule daily reminder if needed
+    await _scheduleOrCancelDailyReminder();
+
+    // Register periodic background check
+    await _registerOrCancelBackgroundWork();
   }
 
-  /// Check for expiring drugs and show immediate notifications
-  static Future<void> _checkExpiryNotifications(List<dynamic> drugs) async {
-    final now = DateTime.now();
-    final nextMonth = DateTime(now.year, now.month + 1, 1);
-    final endOfNextMonth = DateTime(now.year, now.month + 2, 0);
-
-    for (var drug in drugs) {
-      try {
-        final expiryDate = DateTime.tryParse(drug.expiryDate);
-        if (expiryDate != null &&
-            expiryDate.isAfter(nextMonth.subtract(const Duration(days: 1))) &&
-            expiryDate.isBefore(endOfNextMonth.add(const Duration(days: 1)))) {
-
-          // Show immediate notification for expiring drugs
-          await _notificationsPlugin.show(
-            drug.hashCode + 4000, // unique id for expiry notifications
-            'Drug Expiry Reminder',
-            'The drug ${drug.name} will expire on ${drug.expiryDate}.',
-            const NotificationDetails(
-              android: AndroidNotificationDetails(
-                'drug_expiry_channel',
-                'Drug Expiry Notifications',
-                channelDescription: 'Reminds about drugs expiring next month',
-                importance: Importance.max,
-                priority: Priority.high,
-              ),
-            ),
-            payload: 'expiry',
-          );
-          print('Showed expiry notification for: ${drug.name}');
-        }
-      } catch (e) {
-        print('Error checking expiry for ${drug.name}: $e');
-      }
-    }
-  }
-
-  /// Handle notification tap events
-  static void _onNotificationTapped(NotificationResponse response) {
-    final payload = response.payload;
-
-    // Navigate to notification center based on payload
-    if (navigatorKey.currentContext != null) {
-      Navigator.of(navigatorKey.currentContext!).push(
-        MaterialPageRoute(
-          builder: (context) => NotificationCenterScreen(
-            notificationType: payload == 'expiry' ? 'expiry' :
-                            payload == 'stock' ? 'stock' : null,
-          ),
-        ),
-      );
-    }
-  }
-
-  /// Update the cached drugs list and perform immediate checks
-  static Future<void> updateDrugsList(List<dynamic> drugs) async {
-    _cachedDrugs = drugs;
-
-    // Immediately check for any critical issues
-    await checkAndNotifyStockLevels(drugs);
-    await _checkExpiryNotifications(drugs);
-
-    print('Updated drugs list and performed immediate checks');
-  }
-
-  /// Remove scheduled notification methods and replace with immediate checks
-  static Future<void> scheduleDrugExpiryNotifications(List<dynamic> drugs) async {
-    // Instead of scheduling, update the cache and check immediately
-    await updateDrugsList(drugs);
-    print('Updated expiry monitoring (using periodic checks instead of alarms)');
-  }
-
-  /// Remove scheduled notification methods and replace with immediate checks
-  static Future<void> scheduleDrugStockNotifications(List<dynamic> drugs, {int lowStockThreshold = 5}) async {
-    // Instead of scheduling, update the cache and check immediately
-    await updateDrugsList(drugs);
-    print('Updated stock monitoring (using periodic checks instead of alarms)');
-  }
-
-  /// Immediately shows a notification for critically low stock (0 units)
-  static Future<void> showCriticalStockNotification(dynamic drug) async {
-    try {
-      await _notificationsPlugin.show(
-        drug.hashCode + 2000, // unique id for critical stock
-        'Critical Stock Alert',
-        'The drug ${drug.name} is out of stock!',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'drug_stock_channel',
-            'Drug Stock Notifications',
-            channelDescription: 'Alerts about low drug stock levels',
-            importance: Importance.max,
-            priority: Priority.high,
-            playSound: true,
-            enableVibration: true,
-          ),
-        ),
-        payload: 'stock', // Add payload for navigation
-      );
-    } catch (e) {
-      print('Error showing critical stock notification: ${e.toString()}');
-    }
-  }
-
-  /// Shows immediate notification for low stock items
-  static Future<void> showLowStockNotification(dynamic drug, {int lowStockThreshold = 5}) async {
-    if (drug.stock <= lowStockThreshold && drug.stock > 0) {
-      try {
-        await _notificationsPlugin.show(
-          drug.hashCode + 3000, // unique id for low stock
-          'Low Stock Warning',
-          'The drug ${drug.name} has only ${drug.stock} units left. Consider restocking soon.',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'drug_stock_channel',
-              'Drug Stock Notifications',
-              channelDescription: 'Alerts about low drug stock levels',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-          ),
-          payload: 'stock', // Add payload for navigation
-        );
-      } catch (e) {
-        print('Error showing low stock notification: ${e.toString()}');
-      }
-    }
-  }
-
-  /// Checks all drugs and shows immediate notifications for stock issues
-  static Future<void> checkAndNotifyStockLevels(List<dynamic> drugs, {int lowStockThreshold = 5}) async {
-    for (var drug in drugs) {
-      if (drug.stock == 0) {
-        await showCriticalStockNotification(drug);
-      } else if (drug.stock <= lowStockThreshold) {
-        await showLowStockNotification(drug, lowStockThreshold: lowStockThreshold);
-      }
-    }
-  }
-
-  /// Show immediate test notifications (no scheduling)
-  static Future<void> showTestNotification() async {
-    try {
-      await _notificationsPlugin.show(
-        0,
-        'Test Notification',
-        'This is a test notification (no alarms used).',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'drug_expiry_channel',
-            'Drug Expiry Notifications',
-            channelDescription: 'Reminds about drugs expiring next month',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-        ),
-        payload: 'expiry',
-      );
-      print('Showed test notification successfully');
-    } catch (e) {
-      print('Error showing test notification: ${e.toString()}');
-    }
-  }
-
-  /// Test method for stock notifications (immediate)
-  static Future<void> showTestStockNotification() async {
-    try {
-      await _notificationsPlugin.show(
-        100,
-        'Test Stock Notification',
-        'This is a test stock notification (no alarms used).',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'drug_stock_channel',
-            'Drug Stock Notifications',
-            channelDescription: 'Alerts about low drug stock levels',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-        ),
-        payload: 'stock',
-      );
-      print('Showed test stock notification successfully');
-    } catch (e) {
-      print('Error showing test stock notification: ${e.toString()}');
-    }
-  }
-
-  /// Clean up resources
-  static void dispose() {
-    _periodicCheckTimer?.cancel();
-    _backgroundPushTimer?.cancel();
-    _dailyReminderTimer?.cancel();
-    _cachedDrugs.clear();
-    print('NotificationsService disposed');
-  }
-
-  // ===== BACKGROUND PUSH NOTIFICATION SERVICE WITH CUSTOMIZABLE TIMING =====
-
-  /// Get notification settings from shared preferences
+  // API used by UI
   static Future<Map<String, dynamic>> getNotificationSettings() async {
     final prefs = await SharedPreferences.getInstance();
     return {
-      'checkInterval': prefs.getInt(_prefKeyCheckInterval) ?? _defaultCheckInterval,
-      'stockThreshold': prefs.getInt(_prefKeyStockThreshold) ?? _defaultStockThreshold,
-      'expiryDaysAhead': prefs.getInt(_prefKeyExpiryDays) ?? _defaultExpiryDaysAhead,
-      'notificationsEnabled': prefs.getBool(_prefKeyNotificationsEnabled) ?? _defaultNotificationsEnabled,
-      'quietHoursStart': prefs.getInt(_prefKeyQuietHoursStart) ?? _defaultQuietHoursStart,
-      'quietHoursEnd': prefs.getInt(_prefKeyQuietHoursEnd) ?? _defaultQuietHoursEnd,
-      'dailyReminderHour': prefs.getInt(_prefKeyDailyReminderTimeHour) ?? _defaultDailyReminderHour,
-      'dailyReminderMinute': prefs.getInt(_prefKeyDailyReminderTimeMinute) ?? _defaultDailyReminderMinute,
-      'dailyReminderEnabled': prefs.getBool(_prefKeyDailyReminderEnabled) ?? _defaultDailyReminderEnabled,
+      'notificationsEnabled': prefs.getBool(_kNotificationsEnabled) ?? true,
+      'checkInterval': prefs.getInt(_kCheckInterval) ?? 30,
+      'stockThreshold': prefs.getInt(_kStockThreshold) ?? 5,
+      'expiryDaysAhead': prefs.getInt(_kExpiryDaysAhead) ?? 30,
+      'quietHoursStart': prefs.getInt(_kQuietStart) ?? 22,
+      'quietHoursEnd': prefs.getInt(_kQuietEnd) ?? 7,
+      'dailyReminderEnabled': prefs.getBool(_kDailyEnabled) ?? true,
+      'dailyReminderHour': prefs.getInt(_kDailyHour) ?? 9,
+      'dailyReminderMinute': prefs.getInt(_kDailyMinute) ?? 0,
     };
   }
 
-  /// Update notification settings
   static Future<void> updateNotificationSettings({
-    int? checkInterval,
-    int? stockThreshold,
-    int? expiryDaysAhead,
-    bool? notificationsEnabled,
-    int? quietHoursStart,
-    int? quietHoursEnd,
-    int? dailyReminderHour,
-    int? dailyReminderMinute,
-    bool? dailyReminderEnabled,
+    required bool notificationsEnabled,
+    required int checkInterval,
+    required int stockThreshold,
+    required int expiryDaysAhead,
+    required int quietHoursStart,
+    required int quietHoursEnd,
+    required bool dailyReminderEnabled,
+    required int dailyReminderHour,
+    required int dailyReminderMinute,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kNotificationsEnabled, notificationsEnabled);
+    await prefs.setInt(_kCheckInterval, checkInterval);
+    await prefs.setInt(_kStockThreshold, stockThreshold);
+    await prefs.setInt(_kExpiryDaysAhead, expiryDaysAhead);
+    await prefs.setInt(_kQuietStart, quietHoursStart);
+    await prefs.setInt(_kQuietEnd, quietHoursEnd);
+    await prefs.setBool(_kDailyEnabled, dailyReminderEnabled);
+    await prefs.setInt(_kDailyHour, dailyReminderHour);
+    await prefs.setInt(_kDailyMinute, dailyReminderMinute);
 
-    if (checkInterval != null) await prefs.setInt(_prefKeyCheckInterval, checkInterval);
-    if (stockThreshold != null) await prefs.setInt(_prefKeyStockThreshold, stockThreshold);
-    if (expiryDaysAhead != null) await prefs.setInt(_prefKeyExpiryDays, expiryDaysAhead);
-    if (notificationsEnabled != null) await prefs.setBool(_prefKeyNotificationsEnabled, notificationsEnabled);
-    if (quietHoursStart != null) await prefs.setInt(_prefKeyQuietHoursStart, quietHoursStart);
-    if (quietHoursEnd != null) await prefs.setInt(_prefKeyQuietHoursEnd, quietHoursEnd);
-    if (dailyReminderHour != null) await prefs.setInt(_prefKeyDailyReminderTimeHour, dailyReminderHour);
-    if (dailyReminderMinute != null) await prefs.setInt(_prefKeyDailyReminderTimeMinute, dailyReminderMinute);
-    if (dailyReminderEnabled != null) await prefs.setBool(_prefKeyDailyReminderEnabled, dailyReminderEnabled);
-
-    // Restart background service with new settings
-    await startBackgroundPushService();
-
-    print('Notification settings updated and service restarted');
+    await _scheduleOrCancelDailyReminder();
+    await _registerOrCancelBackgroundWork();
   }
 
-  /// Check if current time is within quiet hours
-  static Future<bool> _isInQuietHours() async {
-    final settings = await getNotificationSettings();
-    final now = DateTime.now();
-    final currentHour = now.hour;
-    final quietStart = settings['quietHoursStart'] as int;
-    final quietEnd = settings['quietHoursEnd'] as int;
+  static bool isBackgroundServiceRunning() {
+    // Heuristic flag; Workmanager doesn't expose actual status
+    return _cachedBgRunning ?? false;
+  }
 
-    if (quietStart < quietEnd) {
-      // Same day quiet hours (e.g., 10:00 AM to 6:00 PM)
-      return currentHour >= quietStart && currentHour < quietEnd;
-    } else {
-      // Quiet hours span midnight (e.g., 10:00 PM to 7:00 AM)
-      return currentHour >= quietStart || currentHour < quietEnd;
+  static bool? _cachedBgRunning;
+
+  static Future<void> forceBackgroundCheck() async {
+    await _performCheckAndNotify(isFromBackground: false);
+  }
+
+  // Internal helpers
+  static Future<void> _ensureDefaultSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_kNotificationsEnabled)) {
+      await prefs.setBool(_kNotificationsEnabled, true);
+    }
+    if (!prefs.containsKey(_kCheckInterval)) {
+      await prefs.setInt(_kCheckInterval, 30);
+    }
+    if (!prefs.containsKey(_kStockThreshold)) {
+      await prefs.setInt(_kStockThreshold, 5);
+    }
+    if (!prefs.containsKey(_kExpiryDaysAhead)) {
+      await prefs.setInt(_kExpiryDaysAhead, 30);
+    }
+    if (!prefs.containsKey(_kQuietStart)) {
+      await prefs.setInt(_kQuietStart, 22);
+    }
+    if (!prefs.containsKey(_kQuietEnd)) {
+      await prefs.setInt(_kQuietEnd, 7);
+    }
+    if (!prefs.containsKey(_kDailyEnabled)) {
+      await prefs.setBool(_kDailyEnabled, true);
+    }
+    if (!prefs.containsKey(_kDailyHour)) {
+      await prefs.setInt(_kDailyHour, 9);
+    }
+    if (!prefs.containsKey(_kDailyMinute)) {
+      await prefs.setInt(_kDailyMinute, 0);
     }
   }
 
-  /// Start the background push notification service
-  static Future<void> startBackgroundPushService() async {
-    // Stop any existing background timer
-    _backgroundPushTimer?.cancel();
+  static Future<void> _registerOrCancelBackgroundWork() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool(_kNotificationsEnabled) ?? true;
+    final intervalMin = prefs.getInt(_kCheckInterval) ?? 30;
 
-    final settings = await getNotificationSettings();
-    final isEnabled = settings['notificationsEnabled'] as bool;
-    final checkInterval = settings['checkInterval'] as int;
+    // Cancel existing first to apply changes
+    try {
+      await Workmanager().cancelByUniqueName(_workUniqueName);
+    } catch (_) {}
 
-    if (!isEnabled) {
-      print('Background notifications disabled by user');
+    if (!enabled) {
+      _cachedBgRunning = false;
+      await prefs.setBool(_kBgRunning, false);
       return;
     }
 
-    // Start background timer with user-defined interval
-    _backgroundPushTimer = Timer.periodic(Duration(minutes: checkInterval), (timer) async {
-      await _performBackgroundCheck();
-    });
+    // Workmanager minimum periodic interval on Android is 15 minutes
+    final effectiveMinutes = max(15, intervalMin);
 
-    // Schedule daily reminders if enabled
-    final dailyReminderEnabled = settings['dailyReminderEnabled'] as bool;
-    if (dailyReminderEnabled) {
-      _scheduleDailyReminder();
-    }
-
-    print('Background push notification service started with ${checkInterval}min intervals');
-  }
-
-  /// Stop the background push notification service
-  static Future<void> stopBackgroundPushService() async {
-    _backgroundPushTimer?.cancel();
-    _backgroundPushTimer = null;
-    print('Background push notification service stopped');
-  }
-
-  /// Perform background check with user preferences
-  static Future<void> _performBackgroundCheck() async {
+    // Initialize workmanager
     try {
-      // Check if notifications are enabled and not in quiet hours
-      final settings = await getNotificationSettings();
-      final isEnabled = settings['notificationsEnabled'] as bool;
-
-      if (!isEnabled || await _isInQuietHours()) {
-        return;
-      }
-
-      if (_cachedDrugs.isEmpty) {
-        return;
-      }
-
-      final stockThreshold = settings['stockThreshold'] as int;
-      final expiryDaysAhead = settings['expiryDaysAhead'] as int;
-
-      // Check stock levels with user-defined threshold
-      await _checkAndNotifyStockLevelsWithSettings(_cachedDrugs, stockThreshold);
-
-      // Check expiry with user-defined days ahead
-      await _checkExpiryNotificationsWithSettings(_cachedDrugs, expiryDaysAhead);
-
-    } catch (e) {
-      print('Error during background notification check: $e');
+      await Workmanager().initialize(
+        callbackDispatcher,
+        isInDebugMode: kDebugMode,
+      );
+    } catch (_) {
+      // Already initialized
     }
-  }
 
-  /// Check stock levels with custom threshold
-  static Future<void> _checkAndNotifyStockLevelsWithSettings(List<dynamic> drugs, int threshold) async {
-    for (var drug in drugs) {
-      if (drug.stock == 0) {
-        await _showBackgroundNotification(
-          drug.hashCode + 5000,
-          'Critical Stock Alert',
-          'The drug ${drug.name} is completely out of stock!',
-          'stock',
-          isUrgent: true,
-        );
-      } else if (drug.stock <= threshold) {
-        await _showBackgroundNotification(
-          drug.hashCode + 6000,
-          'Low Stock Warning',
-          'The drug ${drug.name} has only ${drug.stock} units left.',
-          'stock',
-        );
-      }
-    }
-  }
-
-  /// Check expiry with custom days ahead
-  static Future<void> _checkExpiryNotificationsWithSettings(List<dynamic> drugs, int daysAhead) async {
-    final now = DateTime.now();
-    final futureDate = now.add(Duration(days: daysAhead));
-
-    for (var drug in drugs) {
-      try {
-        final expiryDate = DateTime.tryParse(drug.expiryDate);
-        if (expiryDate != null && expiryDate.isBefore(futureDate) && expiryDate.isAfter(now)) {
-          final daysUntilExpiry = expiryDate.difference(now).inDays;
-
-          await _showBackgroundNotification(
-            drug.hashCode + 7000,
-            'Drug Expiry Alert',
-            'The drug ${drug.name} will expire in $daysUntilExpiry day(s).',
-            'expiry',
-            isUrgent: daysUntilExpiry <= 7,
-          );
-        }
-      } catch (e) {
-        print('Error checking expiry for ${drug.name}: $e');
-      }
-    }
-  }
-
-  /// Show background notification with respect to user settings
-  static Future<void> _showBackgroundNotification(
-    int id,
-    String title,
-    String body,
-    String payload, {
-    bool isUrgent = false,
-  }) async {
     try {
-      // Respect quiet hours for non-urgent notifications
-      if (!isUrgent && await _isInQuietHours()) {
-        return;
-      }
-
-      await _notificationsPlugin.show(
-        id,
-        title,
-        body,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            'drug_background_channel',
-            'Background Drug Notifications',
-            channelDescription: 'Background notifications for drug management',
-            importance: isUrgent ? Importance.max : Importance.high,
-            priority: isUrgent ? Priority.high : Priority.defaultPriority,
-            playSound: !await _isInQuietHours(),
-            enableVibration: !await _isInQuietHours(),
-            ongoing: isUrgent, // Keep urgent notifications visible
-          ),
-        ),
-        payload: payload,
+      await Workmanager().registerPeriodicTask(
+        _workUniqueName,
+        _workTag,
+        frequency: Duration(minutes: effectiveMinutes),
+        existingWorkPolicy: ExistingWorkPolicy.replace,
+        initialDelay: Duration(minutes: 1),
+        constraints: Constraints(networkType: NetworkType.connected),
+        backoffPolicy: BackoffPolicy.linear,
+        backoffPolicyDelay: const Duration(minutes: 5),
+        tag: _workTag,
       );
+      _cachedBgRunning = true;
+      await prefs.setBool(_kBgRunning, true);
     } catch (e) {
-      print('Error showing background notification: $e');
+      _cachedBgRunning = false;
+      await prefs.setBool(_kBgRunning, false);
     }
   }
 
-  /// Schedule daily reminder notifications
-  static void _scheduleDailyReminder() async {
-    final settings = await getNotificationSettings();
-    final reminderHour = settings['dailyReminderHour'] as int;
-    final reminderMinute = settings['dailyReminderMinute'] as int;
+  static Future<void> _scheduleOrCancelDailyReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool(_kDailyEnabled) ?? true;
 
-    // Calculate time until next reminder
-    final now = DateTime.now();
-    var nextReminder = DateTime(now.year, now.month, now.day, reminderHour, reminderMinute);
+    // Cancel any previous daily schedule
+    await _flnp.cancel(_dailyNotificationId);
 
-    if (nextReminder.isBefore(now)) {
-      nextReminder = nextReminder.add(const Duration(days: 1));
+    if (!enabled) return;
+
+    final hour = prefs.getInt(_kDailyHour) ?? 9;
+    final minute = prefs.getInt(_kDailyMinute) ?? 0;
+
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    if (scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
     }
 
-    final timeUntilReminder = nextReminder.difference(now);
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelDailyId,
+        'Daily Summary',
+        channelDescription: 'Daily inventory summary reminders',
+        importance: Importance.low,
+        priority: Priority.low,
+        category: AndroidNotificationCategory.reminder,
+        ticker: 'Daily Summary',
+      ),
+      iOS: const DarwinNotificationDetails(),
+    );
 
-    // Cancel any existing daily reminder timer
-    _dailyReminderTimer?.cancel();
+    await _flnp.zonedSchedule(
+      _dailyNotificationId,
+      'Daily Inventory Summary',
+      'Tap to view today\'s inventory status',
+      scheduled,
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      matchDateTimeComponents: DateTimeComponents.time,
+      payload: 'daily',
+    );
+  }
 
-    // Schedule the daily reminder
-    _dailyReminderTimer = Timer(timeUntilReminder, () async {
-      if (!await _isInQuietHours()) {
-        await _showDailyReminder();
-      }
+  static const int _dailyNotificationId = 1000;
+  static const int _stockNotificationId = 1001;
+  static const int _expiryNotificationId = 1002;
 
-      // Schedule next day's reminder
-      _dailyReminderTimer = Timer.periodic(const Duration(days: 1), (timer) async {
-        if (!await _isInQuietHours()) {
-          await _showDailyReminder();
+  static Future<void> _initNotificationsPluginIfNeeded() async {
+    if (_notificationsInitialized) return;
+
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosInit = DarwinInitializationSettings();
+
+    final initSettings = InitializationSettings(android: androidInit, iOS: iosInit);
+
+    await _flnp.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        final payload = response.payload;
+        final ctx = navigatorKey.currentContext;
+        if (ctx != null) {
+          Navigator.of(ctx).pushNamed('/notification-center', arguments: payload);
         }
-      });
-    });
+      },
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+    );
+
+    _notificationsInitialized = true;
   }
 
-  /// Show daily reminder notification
-  static Future<void> _showDailyReminder() async {
-    if (_cachedDrugs.isEmpty) return;
+  // --- Compatibility helpers used by UI layers ---
+  static Future<void> monitorAndTriggerCriticalAlerts(List<Map<String, dynamic>> drugsData) async {
+    await _initNotificationsPluginIfNeeded();
+    final prefs = await SharedPreferences.getInstance();
 
-    final criticalCount = _cachedDrugs.where((drug) => drug.stock == 0).length;
-    final settings = await getNotificationSettings();
-    final lowStockCount = _cachedDrugs.where((drug) =>
-      drug.stock > 0 && drug.stock <= (settings['stockThreshold'] as int)
-    ).length;
+    final enabled = prefs.getBool(_kNotificationsEnabled) ?? true;
+    if (!enabled) return;
 
-    if (criticalCount > 0 || lowStockCount > 0) {
-      String message = '';
-      if (criticalCount > 0) {
-        message += '$criticalCount drug(s) out of stock. ';
-      }
-      if (lowStockCount > 0) {
-        message += '$lowStockCount drug(s) running low. ';
-      }
+    final threshold = prefs.getInt(_kStockThreshold) ?? 5;
+    final daysAhead = prefs.getInt(_kExpiryDaysAhead) ?? 30;
+    final quietStart = prefs.getInt(_kQuietStart) ?? 22;
+    final quietEnd = prefs.getInt(_kQuietEnd) ?? 7;
 
-      await _showBackgroundNotification(
-        8000,
-        'Daily Pharmacy Reminder',
-        '${message}Tap to review your inventory.',
-        'daily_reminder',
+    final now = DateTime.now();
+    final inQuiet = _isWithinQuietHours(quietStart, quietEnd, now);
+
+    List<DrugModel> models = drugsData.map((m) {
+      return DrugModel(
+        id: m['id'] as int?,
+        name: (m['name'] ?? '') as String,
+        stock: (m['stock'] ?? 0) as int,
+        expiryDate: (m['expiryDate'] ?? m['expiry_date'] ?? '') as String,
+        imageUrl: (m['imageUrl'] ?? m['image_url'] ?? '') as String,
       );
+    }).toList();
+
+    final lowStock = models.where((d) => d.stock < threshold).toList();
+    final urgentLow = lowStock.where((d) => d.stock <= 0).toList();
+    final nonUrgentLow = lowStock.where((d) => d.stock > 0).toList();
+
+    bool isExpiringSoon(DrugModel d) {
+      final dt = DateTime.tryParse(d.expiryDate);
+      if (dt == null) return false;
+      final diff = dt.difference(now).inDays;
+      return diff >= 0 && diff <= daysAhead;
+    }
+
+    final expiring = models.where(isExpiringSoon).toList();
+
+    if (urgentLow.isNotEmpty) {
+      await _showStockNotification(urgentLow, isUrgent: true);
+    }
+    if (!inQuiet) {
+      if (nonUrgentLow.isNotEmpty) {
+        await _showStockNotification(nonUrgentLow, isUrgent: false);
+      }
+      if (expiring.isNotEmpty) {
+        await _showExpiryNotification(expiring);
+      }
     }
   }
 
-  /// Get background service status
-  static bool isBackgroundServiceRunning() {
-    return _backgroundPushTimer != null && _backgroundPushTimer!.isActive;
+  static Future<void> updateDrugsList(List<Map<String, dynamic>> drugsData) async {
+    // No persistent cache required for now; method exists to satisfy callers.
+    // Could store lightweight metrics if needed in the future.
+    return;
   }
 
-  /// Force run background check (for testing)
-  static Future<void> forceBackgroundCheck() async {
-    await _performBackgroundCheck();
-    print('Forced background check completed');
+  static Future<void> showTestNotification() async {
+    await _initNotificationsPluginIfNeeded();
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelDailyId,
+        'General',
+        channelDescription: 'General notifications',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: const DarwinNotificationDetails(),
+    );
+
+    await _flnp.show(
+      9999,
+      'Test Notification',
+      'Notifications are working',
+      details,
+      payload: 'test',
+    );
+  }
+
+  @pragma('vm:entry-point')
+  static void notificationTapBackground(NotificationResponse response) {
+    // No-op in background; app will route on foreground open via payload
+  }
+
+  static Future<void> _requestPlatformPermissions() async {
+    // Android 13+ explicit notification permission
+    try {
+      final androidImpl = _flnp.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (androidImpl != null) {
+        await androidImpl.requestNotificationsPermission();
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> _ensureTimezoneInit() async {
+    if (_timezoneInitialized) return;
+    tz.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation(tz.local.name));
+    _timezoneInitialized = true;
+  }
+
+  static Future<void> _backgroundEnsureSupabase() async {
+    // Ensure Supabase is initialized if needed (background isolate)
+    try {
+      // If already initialized, a second call may throw; ignore
+      final prefs = await SharedPreferences.getInstance();
+      final url = prefs.getString(_kSupabaseUrl);
+      final key = prefs.getString(_kSupabaseKey);
+      if (url != null && key != null) {
+        if (!_isSupabaseReady()) {
+          await Supabase.initialize(url: url, anonKey: key);
+        }
+      }
+    } catch (_) {}
+  }
+
+  static bool _isSupabaseReady() {
+    try {
+      // Accessing instance may throw if not initialized
+      Supabase.instance.client; // ignore: unnecessary_statements
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _isWithinQuietHours(int startHour, int endHour, DateTime now) {
+    if (startHour == endHour) return true; // 24h quiet
+    if (startHour < endHour) {
+      // Same day window, e.g., 22->7 is false here
+      return now.hour >= startHour && now.hour < endHour;
+    } else {
+      // Overnight window, e.g., 22->7
+      return now.hour >= startHour || now.hour < endHour;
+    }
+  }
+
+  static Future<void> _performCheckAndNotify({required bool isFromBackground}) async {
+    await _initNotificationsPluginIfNeeded();
+    final prefs = await SharedPreferences.getInstance();
+
+    final enabled = prefs.getBool(_kNotificationsEnabled) ?? true;
+    if (!enabled) return;
+
+    final threshold = prefs.getInt(_kStockThreshold) ?? 5;
+    final daysAhead = prefs.getInt(_kExpiryDaysAhead) ?? 30;
+    final quietStart = prefs.getInt(_kQuietStart) ?? 22;
+    final quietEnd = prefs.getInt(_kQuietEnd) ?? 7;
+
+    // Quiet hours suppress non-urgent alerts
+    final now = DateTime.now();
+    final inQuiet = _isWithinQuietHours(quietStart, quietEnd, now);
+
+    // Fetch data via repository (requires Supabase initialized)
+    final repo = DrugsRepository();
+    List<DrugModel> lowStock = [];
+    List<DrugModel> expiring = [];
+    try {
+      lowStock = await repo.getLowStockDrugs(threshold);
+    } catch (_) {}
+
+    try {
+      expiring = await repo.getDrugsExpiringSoon(daysAhead);
+    } catch (_) {}
+
+    // Filter urgent vs non-urgent
+    final urgentLow = lowStock.where((d) => d.stock <= 0).toList();
+    final nonUrgentLow = lowStock.where((d) => d.stock > 0).toList();
+
+    // Show notifications
+    if (urgentLow.isNotEmpty) {
+      await _showStockNotification(urgentLow, isUrgent: true);
+    }
+
+    if (!inQuiet) {
+      if (nonUrgentLow.isNotEmpty) {
+        await _showStockNotification(nonUrgentLow, isUrgent: false);
+      }
+      if (expiring.isNotEmpty) {
+        await _showExpiryNotification(expiring);
+      }
+    }
+  }
+
+  static Future<void> _showStockNotification(List<DrugModel> drugs, {required bool isUrgent}) async {
+    final count = drugs.length;
+    final topNames = drugs.take(3).map((d) => d.name).join(', ');
+
+    final android = AndroidNotificationDetails(
+      _channelStockId,
+      'Stock Alerts',
+      channelDescription: 'Alerts for low or out-of-stock drugs',
+      importance: isUrgent ? Importance.max : Importance.high,
+      priority: isUrgent ? Priority.max : Priority.high,
+      category: AndroidNotificationCategory.alarm,
+      styleInformation: InboxStyleInformation(
+        drugs.take(5).map((d) => '${d.name} — stock: ${d.stock}').toList(),
+        summaryText: count > 1 ? '+${count - 1} more' : null,
+      ),
+      ticker: 'Stock Alerts',
+    );
+
+    final ios = const DarwinNotificationDetails();
+
+    await _flnp.show(
+      _stockNotificationId,
+      isUrgent ? 'Critical: ${count} item(s) out of stock' : 'Low stock: ${count} item(s)',
+      count == 1 ? '${drugs.first.name} — stock: ${drugs.first.stock}' : topNames,
+      NotificationDetails(android: android, iOS: ios),
+      payload: 'low_stock',
+    );
+  }
+
+  static Future<void> _showExpiryNotification(List<DrugModel> drugs) async {
+    final count = drugs.length;
+    String computeDays(String expiryIso) {
+      final dt = DateTime.tryParse(expiryIso);
+      if (dt == null) return '';
+      final days = dt.difference(DateTime.now()).inDays;
+      return days >= 0 ? '$days day${days == 1 ? '' : 's'}' : 'expired';
+    }
+
+    final android = AndroidNotificationDetails(
+      _channelExpiryId,
+      'Expiry Alerts',
+      channelDescription: 'Alerts for drugs expiring soon',
+      importance: Importance.high,
+      priority: Priority.high,
+      category: AndroidNotificationCategory.reminder,
+      styleInformation: InboxStyleInformation(
+        drugs.take(5).map((d) => '${d.name} — in ${computeDays(d.expiryDate)}').toList(),
+        summaryText: count > 1 ? '+${count - 1} more' : null,
+      ),
+      ticker: 'Expiry Alerts',
+    );
+
+    final ios = const DarwinNotificationDetails();
+
+    await _flnp.show(
+      _expiryNotificationId,
+      'Expiring soon: ${count} item(s)',
+      count == 1 ? '${drugs.first.name} — in ${computeDays(drugs.first.expiryDate)}' : drugs.take(3).map((d) => d.name).join(', '),
+      NotificationDetails(android: android, iOS: ios),
+      payload: 'expiry',
+    );
   }
 }
-
-// To use this service:
-// 1. Call NotificationsService.initialize() in your main() or app startup.
-// 2. Call NotificationsService.scheduleDrugExpiryNotifications(drugs) with your drug list.
-// 3. Call NotificationsService.scheduleDrugStockNotifications(drugs) to schedule stock notifications.
-// 4. Call NotificationsService.checkAndNotifyStockLevels(drugs) to immediately check and notify about stock issues.
-// Make sure to add flutter_local_notifications and timezone packages to pubspec.yaml.

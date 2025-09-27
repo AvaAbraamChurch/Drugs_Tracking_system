@@ -54,6 +54,7 @@ dependencies:
   url_launcher: ^6.2.4
   timezone: any
   path: any
+  workmanager: ^0.7.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
