@@ -499,7 +499,7 @@ class NotificationsService {
 
     await _flnp.show(
       _stockNotificationId,
-      isUrgent ? 'Critical: ${count} item(s) out of stock' : 'Low stock: ${count} item(s)',
+      isUrgent ? 'Critical: $count item(s) out of stock' : 'Low stock: $count item(s)',
       count == 1 ? '${drugs.first.name} — stock: ${drugs.first.stock}' : topNames,
       NotificationDetails(android: android, iOS: ios),
       payload: 'low_stock',
@@ -533,7 +533,7 @@ class NotificationsService {
 
     await _flnp.show(
       _expiryNotificationId,
-      'Expiring soon: ${count} item(s)',
+      'Expiring soon: $count item(s)',
       count == 1 ? '${drugs.first.name} — in ${computeDays(drugs.first.expiryDate)}' : drugs.take(3).map((d) => d.name).join(', '),
       NotificationDetails(android: android, iOS: ios),
       payload: 'expiry',
