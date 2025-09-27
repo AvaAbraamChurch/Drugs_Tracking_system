@@ -104,7 +104,7 @@ class MyApp extends StatelessWidget {
           '/notification-settings': (context) => const NotificationSettingsScreen(),
         },
         home: AnimatedSplashScreen(
-          splash: Image.asset('assets/images/PharmaNow.webp',width: 500,height: 500,),
+          splash: Image.asset('assets/images/PHARMANOW.webp',width: 500,height: 500,),
           duration: 3000,
           splashTransition: SplashTransition.scaleTransition,
           backgroundColor: Colors.white,
