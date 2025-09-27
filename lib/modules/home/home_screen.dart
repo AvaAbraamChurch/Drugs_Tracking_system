@@ -273,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: const Icon(Icons.add, size: 30, color: Colors.white,)
           ),
           body: ConditionalBuilder(
-              condition: cubit.drugs.isNotEmpty || state is! GetDrugsLoadingState,
+              condition: cubit.drugs.isNotEmpty,
               builder: (BuildContext context) => RefreshIndicator(
                 onRefresh: () async {
                   HapticFeedback.lightImpact();
@@ -404,26 +404,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   },
                 ),
               ),
-            fallback: (BuildContext context) => const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    color: Colors.blue,
-                    strokeWidth: 3,
-                  ),
-                  SizedBox(height: 20),
-                  Text(
-                    'Loading drugs...',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w500,
+            fallback: (BuildContext context) {
+              // Show loader only while loading and list is empty
+              if (state is GetDrugsLoadingState) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              // Show an empty-state with an "empty stock" icon when there are no drugs
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 96,
+                      color: Colors.grey.shade400,
                     ),
-                  ),
-                ],
-              ),
-            )
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No drugs in stock',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Tap the + button to add a new drug.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              );
+            }
           ),
         );
 

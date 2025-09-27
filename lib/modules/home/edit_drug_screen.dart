@@ -412,6 +412,30 @@ class _EditDrugScreenState extends State<EditDrugScreen> {
                 ),
                 const Spacer(),
                 IconButton(
+                  onPressed: () => widget.cubit.deleteDrug(widget.drugToEdit.id.toString()).then((_) {
+                    Navigator.of(context).pop(true);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Drug deleted successfully!'),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }).catchError((e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error deleting drug: $e'),
+                        backgroundColor: Colors.red,
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  }),
+                  icon: const Icon(Icons.delete, color: Colors.red,),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.grey.shade100,
+                  ),
+                ),
+                IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),
                   style: IconButton.styleFrom(
